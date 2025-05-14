@@ -1,264 +1,391 @@
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
-    QHeaderView, QWidget, QSplitter, QListWidget, QListWidgetItem,
-    QTextEdit, QDialogButtonBox, QInputDialog
+    QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem,
+    QPushButton, QLabel, QLineEdit, QMessageBox, QHeaderView
 )
 from PyQt5.QtCore import Qt
-from models.product_attribute import ProductAttribute
+from database import get_connection
+
+class ProductAttribute:
+    @staticmethod
+    def get_all_attributes():
+        """Get all product attributes"""
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM ProductAttributes 
+                    ORDER BY name
+                """)
+                return [dict(attr) for attr in cursor.fetchall()]
+            except Exception as e:
+                print(f"Error getting attributes: {e}")
+                return []
+            finally:
+                conn.close()
+        return []
+    
+    @staticmethod
+    def get_values_by_attribute(attribute_id):
+        """Get values for a specific attribute"""
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM ProductAttributeValues 
+                    WHERE attribute_id = ?
+                    ORDER BY value
+                """, (attribute_id,))
+                return [dict(val) for val in cursor.fetchall()]
+            except Exception as e:
+                print(f"Error getting attribute values: {e}")
+                return []
+            finally:
+                conn.close()
+        return []
+    
+    @staticmethod
+    def add_attribute(name, description=""):
+        """Add a new product attribute"""
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO ProductAttributes (name, description)
+                    VALUES (?, ?)
+                """, (name, description))
+                conn.commit()
+                return cursor.lastrowid
+            except Exception as e:
+                print(f"Error adding attribute: {e}")
+                return None
+            finally:
+                conn.close()
+        return None
+    
+    @staticmethod
+    def add_attribute_value(attribute_id, value):
+        """Add a value for an attribute"""
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO ProductAttributeValues (attribute_id, value)
+                    VALUES (?, ?)
+                """, (attribute_id, value))
+                conn.commit()
+                return cursor.lastrowid
+            except Exception as e:
+                print(f"Error adding attribute value: {e}")
+                return None
+            finally:
+                conn.close()
+        return None
+    
+    @staticmethod
+    def delete_attribute(attribute_id):
+        """Delete an attribute and its values"""
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                # Delete values first
+                cursor.execute("""
+                    DELETE FROM ProductAttributeValues 
+                    WHERE attribute_id = ?
+                """, (attribute_id,))
+                
+                # Then delete the attribute
+                cursor.execute("""
+                    DELETE FROM ProductAttributes 
+                    WHERE id = ?
+                """, (attribute_id,))
+                
+                conn.commit()
+                return True
+            except Exception as e:
+                print(f"Error deleting attribute: {e}")
+                return False
+            finally:
+                conn.close()
+        return False
+    
+    @staticmethod
+    def delete_attribute_value(value_id):
+        """Delete an attribute value"""
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM ProductAttributeValues 
+                    WHERE id = ?
+                """, (value_id,))
+                conn.commit()
+                return True
+            except Exception as e:
+                print(f"Error deleting attribute value: {e}")
+                return False
+            finally:
+                conn.close()
+        return False
 
 class AttributeManagementDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.selected_attribute_id = None
         self.init_ui()
-        self.load_attributes()
-
+        
     def init_ui(self):
-        self.setWindowTitle("Gestion des attributs de produit")
+        """Initialize the user interface"""
+        self.setWindowTitle("Gestion des attributs")
         self.setMinimumSize(800, 500)
-
+        
         # Main layout
-        main_layout = QVBoxLayout(self)
-
-        # Create splitter for attribute list and value management
-        splitter = QSplitter(Qt.Horizontal)
+        layout = QVBoxLayout(self)
         
-        # Left side: Attribute list
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
+        # Attributes section
+        attributes_label = QLabel("Attributs de produit")
+        attributes_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(attributes_label)
         
-        # Attribute list header
-        left_header = QHBoxLayout()
-        left_title = QLabel("Attributs")
-        left_title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        add_attr_btn = QPushButton("Ajouter")
-        add_attr_btn.clicked.connect(self.add_attribute)
+        # Add attribute section
+        add_attribute_layout = QHBoxLayout()
         
-        left_header.addWidget(left_title)
-        left_header.addStretch()
-        left_header.addWidget(add_attr_btn)
-        left_layout.addLayout(left_header)
+        self.attribute_name_input = QLineEdit()
+        self.attribute_name_input.setPlaceholderText("Nom de l'attribut (ex: Taille, Couleur...)")
         
-        # Attribute list
-        self.attribute_list = QListWidget()
-        self.attribute_list.currentItemChanged.connect(self.on_attribute_selected)
-        left_layout.addWidget(self.attribute_list)
+        add_attribute_btn = QPushButton("Ajouter attribut")
+        add_attribute_btn.clicked.connect(self.add_attribute)
         
-        # Attribute buttons
-        attr_btn_layout = QHBoxLayout()
-        self.edit_attr_btn = QPushButton("Modifier")
-        self.delete_attr_btn = QPushButton("Supprimer")
+        add_attribute_layout.addWidget(self.attribute_name_input)
+        add_attribute_layout.addWidget(add_attribute_btn)
         
-        self.edit_attr_btn.clicked.connect(self.edit_attribute)
-        self.delete_attr_btn.clicked.connect(self.delete_attribute)
+        layout.addLayout(add_attribute_layout)
         
-        attr_btn_layout.addWidget(self.edit_attr_btn)
-        attr_btn_layout.addWidget(self.delete_attr_btn)
-        left_layout.addLayout(attr_btn_layout)
+        # Attributes table
+        self.attributes_table = QTableWidget()
+        self.attributes_table.setColumnCount(3)
+        self.attributes_table.setHorizontalHeaderLabels(["ID", "Nom", "Actions"])
         
-        # Right side: Value management
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
+        self.attributes_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+        self.attributes_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.attributes_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
         
-        # Value list header
-        right_header = QHBoxLayout()
-        self.values_title = QLabel("Valeurs de l'attribut")
-        self.values_title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        self.add_value_btn = QPushButton("Ajouter")
-        self.add_value_btn.clicked.connect(self.add_attribute_value)
+        self.attributes_table.setColumnWidth(0, 50)
+        self.attributes_table.setColumnWidth(2, 150)
         
-        right_header.addWidget(self.values_title)
-        right_header.addStretch()
-        right_header.addWidget(self.add_value_btn)
-        right_layout.addLayout(right_header)
+        layout.addWidget(self.attributes_table)
         
-        # Value list
-        self.value_table = QTableWidget()
-        self.value_table.setColumnCount(2)
-        self.value_table.setHorizontalHeaderLabels(["Valeur", "Actions"])
-        self.value_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.value_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
-        self.value_table.setColumnWidth(1, 100)
-        right_layout.addWidget(self.value_table)
+        # Attribute values section
+        values_label = QLabel("Valeurs d'attribut")
+        values_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(values_label)
         
-        # Add widgets to splitter
-        splitter.addWidget(left_widget)
-        splitter.addWidget(right_widget)
+        # Add value section
+        add_value_layout = QHBoxLayout()
         
-        # Set default sizes
-        splitter.setSizes([300, 500])
+        add_value_label = QLabel("Pour attribut:")
+        self.attribute_select = QLineEdit()
+        self.attribute_select.setReadOnly(True)
+        self.attribute_select.setPlaceholderText("Sélectionnez un attribut ci-dessus")
         
-        main_layout.addWidget(splitter)
+        self.value_input = QLineEdit()
+        self.value_input.setPlaceholderText("Valeur de l'attribut (ex: Rouge, XL...)")
+        self.value_input.setEnabled(False)
         
-        # Dialog buttons
-        button_box = QDialogButtonBox(QDialogButtonBox.Close)
-        button_box.rejected.connect(self.reject)
-        main_layout.addWidget(button_box)
+        add_value_btn = QPushButton("Ajouter valeur")
+        add_value_btn.clicked.connect(self.add_attribute_value)
+        add_value_btn.setEnabled(False)
+        self.add_value_btn = add_value_btn
         
-        # Initialize buttons as disabled until an attribute is selected
-        self.edit_attr_btn.setEnabled(False)
-        self.delete_attr_btn.setEnabled(False)
-        self.add_value_btn.setEnabled(False)
-        self.value_table.setEnabled(False)
-
+        add_value_layout.addWidget(add_value_label)
+        add_value_layout.addWidget(self.attribute_select)
+        add_value_layout.addWidget(self.value_input)
+        add_value_layout.addWidget(add_value_btn)
+        
+        layout.addLayout(add_value_layout)
+        
+        # Values table
+        self.values_table = QTableWidget()
+        self.values_table.setColumnCount(3)
+        self.values_table.setHorizontalHeaderLabels(["ID", "Valeur", "Actions"])
+        
+        self.values_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+        self.values_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.values_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        
+        self.values_table.setColumnWidth(0, 50)
+        self.values_table.setColumnWidth(2, 100)
+        
+        layout.addWidget(self.values_table)
+        
+        # Close button
+        close_btn = QPushButton("Fermer")
+        close_btn.clicked.connect(self.accept)
+        layout.addWidget(close_btn)
+        
+        # Connect signals
+        self.attributes_table.itemClicked.connect(self.on_attribute_selected)
+        
+        # Initial load
+        self.selected_attribute_id = None
+        self.load_attributes()
+        
     def load_attributes(self):
-        """Load all attributes into the list"""
-        self.attribute_list.clear()
+        """Load attributes into the table"""
         attributes = ProductAttribute.get_all_attributes()
         
-        for attr in attributes:
-            item = QListWidgetItem(attr['name'])
-            item.setData(Qt.UserRole, attr)
-            self.attribute_list.addItem(item)
-
-    def on_attribute_selected(self, current, previous):
-        """Handle attribute selection"""
-        if current:
-            attr_data = current.data(Qt.UserRole)
-            self.selected_attribute_id = attr_data['id']
-            self.values_title.setText(f"Valeurs de '{attr_data['name']}'")
-            
-            # Enable buttons
-            self.edit_attr_btn.setEnabled(True)
-            self.delete_attr_btn.setEnabled(True)
-            self.add_value_btn.setEnabled(True)
-            self.value_table.setEnabled(True)
-            
-            # Load values
-            self.load_attribute_values()
-        else:
-            self.selected_attribute_id = None
-            self.values_title.setText("Valeurs de l'attribut")
-            
-            # Disable buttons
-            self.edit_attr_btn.setEnabled(False)
-            self.delete_attr_btn.setEnabled(False)
-            self.add_value_btn.setEnabled(False)
-            self.value_table.setEnabled(False)
-            
-            # Clear values
-            self.value_table.setRowCount(0)
-
-    def load_attribute_values(self):
-        """Load values for the selected attribute"""
-        if not self.selected_attribute_id:
-            return
-            
-        values = ProductAttribute.get_attribute_values(self.selected_attribute_id)
-        self.value_table.setRowCount(len(values))
+        self.attributes_table.setRowCount(len(attributes))
         
-        for row, value in enumerate(values):
-            # Value
-            self.value_table.setItem(row, 0, QTableWidgetItem(value['value']))
+        for row, attr in enumerate(attributes):
+            # ID
+            id_item = QTableWidgetItem(str(attr['id']))
+            id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
+            self.attributes_table.setItem(row, 0, id_item)
             
-            # Action button
+            # Name
+            name_item = QTableWidgetItem(attr['name'])
+            name_item.setData(Qt.UserRole, attr['id'])
+            self.attributes_table.setItem(row, 1, name_item)
+            
+            # Actions
             actions_widget = QWidget()
             actions_layout = QHBoxLayout(actions_widget)
             actions_layout.setContentsMargins(0, 0, 0, 0)
             
             delete_btn = QPushButton("🗑️")
             delete_btn.setMaximumWidth(30)
-            delete_btn.clicked.connect(lambda checked, v=value['id']: self.delete_attribute_value(v))
+            delete_btn.clicked.connect(lambda checked, id=attr['id']: self.delete_attribute(id))
             
             actions_layout.addWidget(delete_btn)
             actions_layout.addStretch()
             
-            self.value_table.setCellWidget(row, 1, actions_widget)
-
+            self.attributes_table.setCellWidget(row, 2, actions_widget)
+            
+    def load_attribute_values(self, attribute_id):
+        """Load values for the selected attribute"""
+        values = ProductAttribute.get_values_by_attribute(attribute_id)
+        
+        self.values_table.setRowCount(len(values))
+        
+        for row, val in enumerate(values):
+            # ID
+            id_item = QTableWidgetItem(str(val['id']))
+            id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
+            self.values_table.setItem(row, 0, id_item)
+            
+            # Value
+            value_item = QTableWidgetItem(val['value'])
+            value_item.setData(Qt.UserRole, val['id'])
+            self.values_table.setItem(row, 1, value_item)
+            
+            # Actions
+            actions_widget = QWidget()
+            actions_layout = QHBoxLayout(actions_widget)
+            actions_layout.setContentsMargins(0, 0, 0, 0)
+            
+            delete_btn = QPushButton("🗑️")
+            delete_btn.setMaximumWidth(30)
+            delete_btn.clicked.connect(lambda checked, id=val['id']: self.delete_attribute_value(id))
+            
+            actions_layout.addWidget(delete_btn)
+            actions_layout.addStretch()
+            
+            self.values_table.setCellWidget(row, 2, actions_widget)
+            
+    def on_attribute_selected(self, item):
+        """Handle attribute selection"""
+        if self.attributes_table.column(item) != 1:  # Only respond to clicks on the name column
+            return
+            
+        attribute_id = item.data(Qt.UserRole)
+        attribute_name = item.text()
+        
+        self.selected_attribute_id = attribute_id
+        self.attribute_select.setText(attribute_name)
+        
+        # Enable value controls
+        self.value_input.setEnabled(True)
+        self.add_value_btn.setEnabled(True)
+        
+        # Load values for this attribute
+        self.load_attribute_values(attribute_id)
+        
     def add_attribute(self):
         """Add a new attribute"""
-        name, ok = QInputDialog.getText(self, "Nouvel attribut", "Nom de l'attribut:", QLineEdit.Normal)
-        if ok and name:
-            description, ok = QInputDialog.getText(self, "Nouvel attribut", "Description (optionnelle):", QLineEdit.Normal)
-            if ok:  # User might cancel the description but we still add
-                attribute_id = ProductAttribute.add_attribute(name, description if description else None)
-                if attribute_id:
-                    self.load_attributes()
-                    # Select the new attribute
-                    for i in range(self.attribute_list.count()):
-                        item = self.attribute_list.item(i)
-                        if item.data(Qt.UserRole)['id'] == attribute_id:
-                            self.attribute_list.setCurrentItem(item)
-                            break
-                else:
-                    QMessageBox.warning(self, "Erreur", "Impossible d'ajouter cet attribut.")
-
-    def edit_attribute(self):
-        """Edit the selected attribute"""
-        if not self.selected_attribute_id:
+        name = self.attribute_name_input.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Erreur", "Veuillez entrer un nom d'attribut.")
             return
             
-        current_item = self.attribute_list.currentItem()
-        if current_item:
-            attr_data = current_item.data(Qt.UserRole)
-            
-            name, ok = QInputDialog.getText(
-                self, "Modifier attribut", 
-                "Nom de l'attribut:", 
-                QLineEdit.Normal, 
-                attr_data['name']
-            )
-            
-            if ok and name:
-                description, ok = QInputDialog.getText(
-                    self, "Modifier attribut", 
-                    "Description:", 
-                    QLineEdit.Normal, 
-                    attr_data['description'] or ""
-                )
-                
-                if ok and ProductAttribute.update_attribute(
-                    self.selected_attribute_id, 
-                    name, 
-                    description if description else None
-                ):
-                    self.load_attributes()
-                else:
-                    QMessageBox.warning(self, "Erreur", "Impossible de modifier cet attribut.")
-
-    def delete_attribute(self):
-        """Delete the selected attribute"""
+        # Add to database
+        attribute_id = ProductAttribute.add_attribute(name)
+        if attribute_id:
+            self.attribute_name_input.clear()
+            self.load_attributes()
+            QMessageBox.information(self, "Succès", f"Attribut '{name}' ajouté avec succès.")
+        else:
+            QMessageBox.warning(self, "Erreur", "Erreur lors de l'ajout de l'attribut.")
+        
+    def add_attribute_value(self):
+        """Add a value to the selected attribute"""
         if not self.selected_attribute_id:
+            QMessageBox.warning(self, "Erreur", "Veuillez d'abord sélectionner un attribut.")
             return
             
+        value = self.value_input.text().strip()
+        if not value:
+            QMessageBox.warning(self, "Erreur", "Veuillez entrer une valeur d'attribut.")
+            return
+            
+        # Add to database
+        value_id = ProductAttribute.add_attribute_value(self.selected_attribute_id, value)
+        if value_id:
+            self.value_input.clear()
+            self.load_attribute_values(self.selected_attribute_id)
+            QMessageBox.information(self, "Succès", f"Valeur '{value}' ajoutée avec succès.")
+        else:
+            QMessageBox.warning(self, "Erreur", "Erreur lors de l'ajout de la valeur. Assurez-vous qu'elle n'existe pas déjà.")
+        
+    def delete_attribute(self, attribute_id):
+        """Delete an attribute and its values"""
         reply = QMessageBox.question(
             self, 'Confirmation',
-            "Êtes-vous sûr de vouloir supprimer cet attribut et toutes ses valeurs ?",
+            'Supprimer cet attribut et toutes ses valeurs ?',
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
         
         if reply == QMessageBox.Yes:
-            if ProductAttribute.delete_attribute(self.selected_attribute_id):
-                self.selected_attribute_id = None
+            if ProductAttribute.delete_attribute(attribute_id):
+                # Reset if we deleted the selected attribute
+                if self.selected_attribute_id == attribute_id:
+                    self.selected_attribute_id = None
+                    self.attribute_select.clear()
+                    self.value_input.setEnabled(False)
+                    self.add_value_btn.setEnabled(False)
+                    self.values_table.setRowCount(0)
+                
                 self.load_attributes()
+                QMessageBox.information(self, "Succès", "Attribut supprimé avec succès.")
             else:
-                QMessageBox.warning(self, "Erreur", "Impossible de supprimer cet attribut.")
-
-    def add_attribute_value(self):
-        """Add a new value to the selected attribute"""
-        if not self.selected_attribute_id:
-            return
-            
-        value, ok = QInputDialog.getText(self, "Nouvelle valeur", "Valeur:", QLineEdit.Normal)
-        if ok and value:
-            if ProductAttribute.add_attribute_value(self.selected_attribute_id, value):
-                self.load_attribute_values()
-            else:
-                QMessageBox.warning(self, "Erreur", "Impossible d'ajouter cette valeur.")
-
+                QMessageBox.warning(self, "Erreur", "Erreur lors de la suppression de l'attribut.")
+        
     def delete_attribute_value(self, value_id):
         """Delete an attribute value"""
         reply = QMessageBox.question(
             self, 'Confirmation',
-            "Êtes-vous sûr de vouloir supprimer cette valeur ?",
+            'Supprimer cette valeur d\'attribut ?',
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
         
         if reply == QMessageBox.Yes:
             if ProductAttribute.delete_attribute_value(value_id):
-                self.load_attribute_values()
+                self.load_attribute_values(self.selected_attribute_id)
+                QMessageBox.information(self, "Succès", "Valeur supprimée avec succès.")
             else:
-                QMessageBox.warning(self, "Erreur", "Impossible de supprimer cette valeur.")
+                QMessageBox.warning(self, "Erreur", "Erreur lors de la suppression de la valeur.")

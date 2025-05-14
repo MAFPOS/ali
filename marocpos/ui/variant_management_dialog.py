@@ -244,8 +244,16 @@ class VariantManagementDialog(QDialog):
             if not attr_combo or not values_widget:
                 continue
                 
+            # Check if an attribute is actually selected
+            if attr_combo.currentIndex() < 0:
+                continue
+                
             # Get the attribute name
             attr_name = attr_combo.currentText()
+            
+            # Skip empty attribute names
+            if not attr_name.strip():
+                continue
             
             # Get selected values
             selected_values = []
@@ -393,8 +401,19 @@ class VariantManagementDialog(QDialog):
             if dialog.exec_():
                 # Refresh our attribute list
                 self.load_attributes()
+        except ImportError:
+            QMessageBox.warning(
+                self,
+                "Module manquant",
+                "Le module de gestion des attributs n'est pas disponible. Veuillez vérifier votre installation."
+            )
         except Exception as e:
             print(f"Error opening attribute management: {e}")
+            QMessageBox.warning(
+                self,
+                "Erreur",
+                f"Une erreur s'est produite lors de l'ouverture de la gestion des attributs: {str(e)}"
+            )
 
     def get_variants_data(self):
         """Get the configured variants data"""
