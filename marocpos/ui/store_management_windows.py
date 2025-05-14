@@ -19,8 +19,8 @@ class StoreManagementWindow(QWidget):
 
         # Table to display stores
         self.store_table = QTableWidget()
-        self.store_table.setColumnCount(4)
-        self.store_table.setHorizontalHeaderLabels(["ID", "Name", "Location", "Active"])
+        self.store_table.setColumnCount(5)  # Added column for address
+        self.store_table.setHorizontalHeaderLabels(["ID", "Name", "Address", "Phone", "Actions"])
         layout.addWidget(self.store_table)
 
         # Buttons for store actions

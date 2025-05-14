@@ -191,12 +191,19 @@ class VariantManagementDialog(QDialog):
             if item.widget():
                 item.widget().deleteLater()
         
+        # Skip if no attribute is selected
+        if not attribute_name:
+            return
+            
         # Get attribute values
         values = []
         attributes = ProductAttribute.get_all_attributes()
         for attr in attributes:
-            if attr['name'] == attribute_name:
-                values = ProductAttribute.get_attribute_values(attr['id'])
+            if attr.get('name') == attribute_name:
+                try:
+                    values = ProductAttribute.get_attribute_values(attr['id'])
+                except Exception as e:
+                    print(f"Error getting attribute values: {e}")
                 break
         
         # Add checkboxes for each value

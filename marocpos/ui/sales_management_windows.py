@@ -425,6 +425,9 @@ class SalesManagementWindow(QWidget):
                         cursor.execute("SELECT id FROM Products WHERE name = ?", (product_name,))
                         product_id = cursor.fetchone()[0]
                     
+                    # Calculate subtotal
+                    subtotal = quantity * price
+                    
                     # Add sale item
                     cursor.execute("""
                         INSERT INTO SaleItems (
@@ -432,9 +435,10 @@ class SalesManagementWindow(QWidget):
                             product_id,
                             variant_id,
                             quantity,
-                            unit_price
-                        ) VALUES (?, ?, ?, ?, ?)
-                    """, (sale_id, product_id, variant_id, quantity, price))
+                            unit_price,
+                            subtotal
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                    """, (sale_id, product_id, variant_id, quantity, price, subtotal))
                     
                     # Update stock - different approach for variants vs regular products
                     if variant_id:

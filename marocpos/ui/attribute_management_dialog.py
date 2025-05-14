@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLabel, QLineEdit, QMessageBox, QHeaderView
+    QPushButton, QLabel, QLineEdit, QMessageBox, QHeaderView, QWidget
 )
 from PyQt5.QtCore import Qt
 from database import get_connection
