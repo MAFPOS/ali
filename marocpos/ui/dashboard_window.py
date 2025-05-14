@@ -6,11 +6,14 @@ from PyQt5.QtCore import Qt, QDateTime
 from models.category import Category
 from models.user import User
 from controllers.auth_controller import AuthController
-from ui.user_management_window import UserManagementWindow
-from ui.store_management_windows import StoreManagementWindow
-from ui.sales_management_windows import SalesManagementWindow
-from ui.product_management_window import ProductManagementWindow
-from ui.category_management_window import CategoryManagementWindow
+
+# Use lazy imports instead of top-level imports to avoid circular dependencies
+# These will be imported when needed in the respective methods
+# from ui.user_management_window import UserManagementWindow
+# from ui.store_management_windows import StoreManagementWindow
+# from ui.sales_management_windows import SalesManagementWindow
+# from ui.product_management_window import ProductManagementWindow
+# from ui.category_management_window import CategoryManagementWindow
 
 class DashboardWindow(QMainWindow):
     def __init__(self, user=None):
@@ -217,7 +220,7 @@ class DashboardWindow(QMainWindow):
             except Exception as e:
                 print(f"Error filtering by category: {e}")
 
-    def open_window(self, window_class, window_name):
+    def open_window(self, window_class_name, window_name):
         """Open a window and track it to prevent duplicates."""
         # Check if window is already open
         if window_name in self.open_windows and self.open_windows[window_name].isVisible():
@@ -226,30 +229,40 @@ class DashboardWindow(QMainWindow):
             self.open_windows[window_name].raise_()
             return
         
-        # Create a new window
-        new_window = window_class()
-        self.open_windows[window_name] = new_window
-        new_window.show()
+        # Dynamically import the window class to avoid circular dependencies
+        module_name = f"ui.{window_class_name}"
+        try:
+            module = __import__(module_name, fromlist=[''])
+            # Get the class from the module - usually has same name as file without _
+            class_name = window_class_name.replace('_windows', '_window').replace('_window', 'Window')
+            window_class = getattr(module, class_name)
+            
+            # Create a new window
+            new_window = window_class()
+            self.open_windows[window_name] = new_window
+            new_window.show()
+        except Exception as e:
+            print(f"Error opening window {window_name}: {e}")
 
     def open_sales_window(self):
         """Open the Sales window."""
-        self.open_window(SalesManagementWindow, 'sales')
+        self.open_window('sales_management_windows', 'sales')
 
     def open_product_management(self):
         """Open the Product Management window."""
-        self.open_window(ProductManagementWindow, 'product')
+        self.open_window('product_management_window', 'product')
 
     def open_category_management(self):
         """Open the Category Management window."""
-        self.open_window(CategoryManagementWindow, 'category')
+        self.open_window('category_management_window', 'category')
 
     def open_store_management(self):
         """Open the Store Management window."""
-        self.open_window(StoreManagementWindow, 'store')
+        self.open_window('store_management_windows', 'store')
 
     def open_user_management(self):
         """Open the User Management window."""
-        self.open_window(UserManagementWindow, 'user')
+        self.open_window('user_management_window', 'user')
         
     def closeEvent(self, event):
         """Close all child windows when main window is closed."""

@@ -384,11 +384,17 @@ class VariantManagementDialog(QDialog):
 
     def open_attribute_management(self):
         """Open the attribute management dialog"""
-        from .attribute_management_dialog import AttributeManagementDialog
-        dialog = AttributeManagementDialog(self)
-        if dialog.exec_():
-            # Refresh our attribute list
-            self.load_attributes()
+        # Import on-demand to avoid circular dependencies
+        try:
+            module = __import__('ui.attribute_management_dialog', fromlist=['AttributeManagementDialog'])
+            AttributeManagementDialog = module.AttributeManagementDialog
+            
+            dialog = AttributeManagementDialog(self)
+            if dialog.exec_():
+                # Refresh our attribute list
+                self.load_attributes()
+        except Exception as e:
+            print(f"Error opening attribute management: {e}")
 
     def get_variants_data(self):
         """Get the configured variants data"""

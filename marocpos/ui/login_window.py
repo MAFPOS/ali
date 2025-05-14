@@ -4,7 +4,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
-from ui.dashboard_window import DashboardWindow
+# Remove circular import
+# from ui.dashboard_window import DashboardWindow
 
 class LoginWindow(QWidget):
     def __init__(self, auth_controller=None):
@@ -102,6 +103,8 @@ class LoginWindow(QWidget):
 
         user = self.auth_controller.login(username, password)
         if user:
+            # Use lazy import to avoid circular dependency
+            from ui.dashboard_window import DashboardWindow
             self.dashboard = DashboardWindow(user=user)
             self.dashboard.show()
             self.close()
