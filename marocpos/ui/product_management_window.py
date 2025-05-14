@@ -138,10 +138,21 @@ class ProductManagementWindow(QWidget):
                 edit_btn = QPushButton("✏️")
                 delete_btn = QPushButton("🗑️")
                 variant_btn = QPushButton("🔄")  # For managing variants
+                stock_btn = QPushButton("📦")   # For managing stock
                 
                 edit_btn.clicked.connect(lambda checked, p=product_dict: self.edit_product(p))
                 delete_btn.clicked.connect(lambda checked, id=product_dict['id']: self.delete_product(id))
                 variant_btn.clicked.connect(lambda checked, p=product_dict: self.manage_variants(p))
+                stock_btn.clicked.connect(lambda checked, p=product_dict: self.manage_stock(p))
+                
+                # Set tooltips for buttons
+                edit_btn.setToolTip("Modifier le produit")
+                delete_btn.setToolTip("Supprimer le produit")
+                variant_btn.setToolTip("Gérer les variantes")
+                stock_btn.setToolTip("Gérer le stock")
+                
+                # Add stock management button first
+                actions_layout.addWidget(stock_btn)
                 
                 if has_variants:
                     actions_layout.addWidget(variant_btn)
@@ -162,6 +173,25 @@ class ProductManagementWindow(QWidget):
                 print(f"Product data: {product}")
                 continue
 
+    def manage_stock(self, product):
+        """Open stock management dialog for a product"""
+        try:
+            # Import the dialog dynamically to avoid circular imports
+            from .stock_management_dialog import StockManagementDialog
+            
+            # Create and show the dialog
+            dialog = StockManagementDialog(product, self)
+            
+            if dialog.exec_():
+                # Refresh the product list to show updated stock levels
+                self.load_products()
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Erreur",
+                f"Erreur lors de l'ouverture du gestionnaire de stock: {str(e)}"
+            )
+    
     def manage_variants(self, product):
         """Open the variant management dialog for an existing product"""
         try:
