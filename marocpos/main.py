@@ -37,6 +37,15 @@ def main():
     User.create_table()
     Product.create_tables()
     Category.initialize_database()
+    
+    # Initialize product attribute tables for variants
+    try:
+        from models.product_attribute import ProductAttribute
+        ProductAttribute.create_tables()
+        print("✅ Product tables updated successfully")
+    except Exception as e:
+        print(f"⚠️ Error initializing product attribute tables: {e}")
+        
     print("Database tables created or verified.")
 
     # Initialize admin user

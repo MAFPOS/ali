@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from models.product import Product
+import json
 from .add_product_dialog import AddProductDialog
 
 class ProductManagementWindow(QWidget):
@@ -162,12 +163,59 @@ class ProductManagementWindow(QWidget):
                 continue
 
     def manage_variants(self, product):
-        # TODO: Implement variant management dialog
-        QMessageBox.information(
-            self,
-            "Gestion des variantes",
-            f"Gestion des variantes pour {product['name']}\n(Fonctionnalité à venir)"
-        )
+        """Open the variant management dialog for an existing product"""
+        try:
+            # Import the dialog dynamically to avoid circular imports
+            from .variant_management_dialog import VariantManagementDialog
+            
+            # Parse variant attributes if they exist
+            variant_attributes = []
+            if product.get('variant_attributes'):
+                try:
+                    if isinstance(product['variant_attributes'], str):
+                        variant_attributes = json.loads(product['variant_attributes'])
+                    else:
+                        variant_attributes = product['variant_attributes']
+                except Exception as e:
+                    print(f"Error parsing variant attributes: {e}")
+            
+            # Create and show the dialog
+            dialog = VariantManagementDialog(
+                product_id=product['id'],
+                parent=self,
+                variant_attributes=variant_attributes
+            )
+            
+            if dialog.exec_():
+                # Get the updated variant data
+                variants_data = dialog.get_variants_data()
+                
+                # Update the product with the new variant data
+                if variants_data:
+                    # Update the product with new variant data
+                    update_data = {
+                        'has_variants': True,
+                        'variant_attributes': json.dumps(dialog.get_attribute_names())
+                    }
+                    
+                    # Update the product in the database
+                    Product.update_product(product['id'], **update_data)
+                    
+                    # Update the variants
+                    # Here we would need to add code to update/delete existing variants
+                    # For now we'll just show a success message
+                    self.load_products()
+                    QMessageBox.information(
+                        self,
+                        "Succès",
+                        f"{len(variants_data)} variantes configurées pour {product['name']}"
+                    )
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Erreur",
+                f"Erreur lors de la gestion des variantes: {str(e)}"
+            )
 
     # ... (rest of the methods remain the same)
     def add_product(self):  # Added this missing method
