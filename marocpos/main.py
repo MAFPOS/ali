@@ -1,9 +1,11 @@
 from PyQt5.QtWidgets import QApplication
 import sys
+import os
 from ui.login_window import LoginWindow
 from controllers.auth_controller import AuthController
 from models.user import User
 from models.product import Product
+from models.category import Category
 from database import initialize_database
 from datetime import datetime
 
@@ -33,11 +35,17 @@ def main():
 
     # Create tables
     User.create_table()
+    Product.create_tables()
+    Category.initialize_database()
     print("Database tables created or verified.")
 
     # Initialize admin user
     init_admin_user()
 
+    # Create images directory if it doesn't exist
+    images_dir = os.path.join(os.path.dirname(__file__), 'images')
+    os.makedirs(images_dir, exist_ok=True)
+    
     # Start the application
     app = QApplication(sys.argv)
     
@@ -50,10 +58,6 @@ def main():
     login_window.show()
     
     sys.exit(app.exec_())
-    
-    # Create images directory if it doesn't exist
-    images_dir = os.path.join(os.path.dirname(__file__), 'images')
-    os.makedirs(images_dir, exist_ok=True)
 
 if __name__ == "__main__":
     main()

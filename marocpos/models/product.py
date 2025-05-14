@@ -1,6 +1,7 @@
 from database import get_connection
 from datetime import datetime, UTC
 import json
+import sqlite3
 
 class Product:
     def __init__(self, name, unit_price=0, purchase_price=0, stock=0, category_id=None):
@@ -186,172 +187,112 @@ class Product:
                 conn.close()
         return []
 
-    # ... (rest of your existing methods remain the same)
-
-@staticmethod
-def get_products_by_category(category_id=None):
-    conn = get_connection()
-    if conn:
-        try:
-            cursor = conn.cursor()
-            if category_id is None:
+    @staticmethod
+    def add_variant(product_id, attribute_values, price_adjustment=0, stock=0, barcode=None):
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                
+                # Convert attribute values to JSON if it's a dict
+                if isinstance(attribute_values, dict):
+                    attribute_values = json.dumps(attribute_values)
+                
                 cursor.execute("""
-                    SELECT 
-                        p.id, 
-                        p.name, 
-                        p.barcode,
-                        COALESCE(p.unit_price, 0) as unit_price, 
-                        COALESCE(p.stock, 0) as stock,
-                        p.image_path,
-                        p.category_id,
-                        p.has_variants,
-                        p.variant_attributes,
-                        COALESCE(c.name, 'Non catégorisé') as category_name,
-                        p.description,
-                        p.purchase_price
-                    FROM Products p
-                    LEFT JOIN Categories c ON p.category_id = c.id
-                    ORDER BY p.name
-                """)
-            else:
+                    INSERT INTO ProductVariants (
+                        product_id, attribute_values, price_adjustment,
+                        stock, barcode
+                    ) VALUES (?, ?, ?, ?, ?)
+                """, (product_id, attribute_values, price_adjustment, stock, barcode))
+                
+                variant_id = cursor.lastrowid
+                conn.commit()
+                return variant_id
+            except Exception as e:
+                print(f"Error adding variant: {e}")
+                return None
+            finally:
+                conn.close()
+        return None
+
+    @staticmethod
+    def get_variants(product_id):
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT 
-                        p.id, 
-                        p.name, 
-                        p.barcode,
-                        COALESCE(p.unit_price, 0) as unit_price, 
-                        COALESCE(p.stock, 0) as stock,
-                        p.image_path,
-                        p.category_id,
-                        p.has_variants,
-                        p.variant_attributes,
-                        COALESCE(c.name, 'Non catégorisé') as category_name,
-                        p.description,
-                        p.purchase_price
-                    FROM Products p
-                    LEFT JOIN Categories c ON p.category_id = c.id
-                    WHERE p.category_id = ?
-                    ORDER BY p.name
-                """, (category_id,))
+                    SELECT *
+                    FROM ProductVariants
+                    WHERE product_id = ?
+                    ORDER BY id
+                """, (product_id,))
+                variants = cursor.fetchall()
+                
+                # Convert attribute_values from JSON string to dict
+                return [{
+                    **dict(variant),
+                    'attribute_values': json.loads(variant['attribute_values'])
+                    if variant['attribute_values'] else {}
+                } for variant in variants]
+            finally:
+                conn.close()
+        return []
 
-            products = cursor.fetchall()
-            
-            # Process variant attributes if present
-            result = []
-            for product in products:
-                product_dict = dict(product)
-                if product_dict.get('variant_attributes'):
-                    try:
-                        product_dict['variant_attributes'] = json.loads(product_dict['variant_attributes'])
-                    except:
-                        product_dict['variant_attributes'] = None
-                result.append(product_dict)
-            
-            return result
-        finally:
-            conn.close()
-    return []
-@staticmethod
-def add_variant(product_id, attribute_values, price_adjustment=0, stock=0, barcode=None):
-    conn = get_connection()
-    if conn:
-        try:
-            cursor = conn.cursor()
-            
-            # Convert attribute values to JSON if it's a dict
-            if isinstance(attribute_values, dict):
-                attribute_values = json.dumps(attribute_values)
-            
-            cursor.execute("""
-                INSERT INTO ProductVariants (
-                    product_id, attribute_values, price_adjustment,
-                    stock, barcode
-                ) VALUES (?, ?, ?, ?, ?)
-            """, (product_id, attribute_values, price_adjustment, stock, barcode))
-            
-            variant_id = cursor.lastrowid
-            conn.commit()
-            return variant_id
-        except Exception as e:
-            print(f"Error adding variant: {e}")
-            return None
-        finally:
-            conn.close()
-    return None
+    @staticmethod
+    def update_variant(variant_id, **kwargs):
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                
+                # Build update query dynamically
+                update_fields = []
+                values = []
+                
+                for key, value in kwargs.items():
+                    if key == 'attribute_values' and isinstance(value, dict):
+                        value = json.dumps(value)
+                    update_fields.append(f"{key} = ?")
+                    values.append(value)
+                
+                # Add updated_at timestamp
+                update_fields.append("updated_at = CURRENT_TIMESTAMP")
+                
+                # Add variant_id to values
+                values.append(variant_id)
+                
+                query = f"""
+                    UPDATE ProductVariants 
+                    SET {', '.join(update_fields)}
+                    WHERE id = ?
+                """
+                
+                cursor.execute(query, values)
+                conn.commit()
+                return True
+            except Exception as e:
+                print(f"Error updating variant: {e}")
+                return False
+            finally:
+                conn.close()
+        return False
 
-@staticmethod
-def get_variants(product_id):
-    conn = get_connection()
-    if conn:
-        try:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT *
-                FROM ProductVariants
-                WHERE product_id = ?
-                ORDER BY id
-            """, (product_id,))
-            variants = cursor.fetchall()
-            
-            # Convert attribute_values from JSON string to dict
-            return [{
-                **dict(variant),
-                'attribute_values': json.loads(variant['attribute_values'])
-                if variant['attribute_values'] else {}
-            } for variant in variants]
-        finally:
-            conn.close()
-    return []
-
-@staticmethod
-def update_variant(variant_id, **kwargs):
-    conn = get_connection()
-    if conn:
-        try:
-            cursor = conn.cursor()
-            
-            # Build update query dynamically
-            update_fields = []
-            values = []
-            
-            for key, value in kwargs.items():
-                if key == 'attribute_values' and isinstance(value, dict):
-                    value = json.dumps(value)
-                update_fields.append(f"{key} = ?")
-                values.append(value)
-            
-            # Add updated_at timestamp
-            update_fields.append("updated_at = CURRENT_TIMESTAMP")
-            
-            # Add variant_id to values
-            values.append(variant_id)
-            
-            query = f"""
-                UPDATE ProductVariants 
-                SET {', '.join(update_fields)}
-                WHERE id = ?
-            """
-            
-            cursor.execute(query, values)
-            conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error updating variant: {e}")
-            return False
-        finally:
-            conn.close()
-    return False
-
-@staticmethod
-def add_product(name, unit_price=0, purchase_price=0, stock=0, category_id=None, **kwargs):
+    @staticmethod
+    def add_product(name, unit_price=0, purchase_price=0, stock=0, category_id=None, has_variants=False, variant_attributes=None, **kwargs):
         conn = get_connection()
         if conn:
             try:
                 cursor = conn.cursor()
                 
                 # Prepare fields and values
-                fields = ['name', 'unit_price', 'purchase_price', 'stock', 'category_id']
-                values = [name, unit_price, purchase_price, stock, category_id]
+                fields = ['name', 'unit_price', 'purchase_price', 'stock', 'category_id', 'has_variants']
+                values = [name, unit_price, purchase_price, stock, category_id, has_variants]
+                
+                # Add variant_attributes if present
+                if variant_attributes:
+                    fields.append('variant_attributes')
+                    values.append(json.dumps(variant_attributes) if isinstance(variant_attributes, list) else variant_attributes)
                 
                 # Add optional fields
                 optional_fields = [
@@ -366,7 +307,9 @@ def add_product(name, unit_price=0, purchase_price=0, stock=0, category_id=None,
                         values.append(kwargs[field])
                 
                 # Add timestamps
+                current_time = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
                 fields.extend(['created_at', 'updated_at'])
+                values.extend([current_time, current_time])
                 
                 # Create the SQL query
                 query = f"""
@@ -374,7 +317,7 @@ def add_product(name, unit_price=0, purchase_price=0, stock=0, category_id=None,
                     VALUES ({', '.join(['?' for _ in fields])})
                 """
                 
-                cursor.execute(query, values + [datetime.now(UTC), datetime.now(UTC)])
+                cursor.execute(query, values)
                 product_id = cursor.lastrowid
                 
                 # Calculate and update profit margin if both prices are provided
@@ -386,6 +329,21 @@ def add_product(name, unit_price=0, purchase_price=0, stock=0, category_id=None,
                         WHERE id = ?
                     """, (profit_margin, product_id))
                 
+                # Add default supplier if provided
+                if 'supplier_id' in kwargs and kwargs['supplier_id']:
+                    cursor.execute("""
+                        INSERT INTO ProductSuppliers (
+                            product_id, supplier_id, price, 
+                            lead_time, minimum_order
+                        ) VALUES (?, ?, ?, ?, ?)
+                    """, (
+                        product_id, 
+                        kwargs['supplier_id'],
+                        kwargs.get('supplier_price', purchase_price),
+                        kwargs.get('lead_time'),
+                        kwargs.get('minimum_order')
+                    ))
+                
                 conn.commit()
                 return product_id
             except Exception as e:
@@ -394,8 +352,9 @@ def add_product(name, unit_price=0, purchase_price=0, stock=0, category_id=None,
             finally:
                 conn.close()
         return None
-@staticmethod
-def update_product(product_id, **kwargs):
+
+    @staticmethod
+    def update_product(product_id, **kwargs):
         conn = get_connection()
         if conn:
             try:
@@ -453,8 +412,8 @@ def update_product(product_id, **kwargs):
                 conn.close()
         return False
 
-@staticmethod
-def delete_product(product_id):
+    @staticmethod
+    def delete_product(product_id):
         conn = get_connection()
         if conn:
             try:
@@ -464,8 +423,18 @@ def delete_product(product_id):
                 
                 # Delete related records first
                 cursor.execute("DELETE FROM ProductVariants WHERE product_id = ?", (product_id,))
-                cursor.execute("DELETE FROM StockMovements WHERE product_id = ?", (product_id,))
-                cursor.execute("DELETE FROM ProductSuppliers WHERE product_id = ?", (product_id,))
+                
+                # Try to delete from StockMovements if the table exists
+                try:
+                    cursor.execute("DELETE FROM StockMovements WHERE product_id = ?", (product_id,))
+                except sqlite3.OperationalError:
+                    pass  # Table might not exist
+                
+                # Try to delete from ProductSuppliers if the table exists
+                try:
+                    cursor.execute("DELETE FROM ProductSuppliers WHERE product_id = ?", (product_id,))
+                except sqlite3.OperationalError:
+                    pass  # Table might not exist
                 
                 # Delete the product
                 cursor.execute("DELETE FROM Products WHERE id = ?", (product_id,))
@@ -480,8 +449,8 @@ def delete_product(product_id):
                 conn.close()
         return False
 
-@staticmethod
-def update_stock(product_id, quantity, movement_type='adjustment', reference=None, user_id=None):
+    @staticmethod
+    def update_stock(product_id, quantity, movement_type='adjustment', reference=None, user_id=None):
         conn = get_connection()
         if conn:
             try:
@@ -509,13 +478,16 @@ def update_stock(product_id, quantity, movement_type='adjustment', reference=Non
                     WHERE id = ?
                 """, (new_stock, product_id))
 
-                # Record stock movement
-                cursor.execute("""
-                    INSERT INTO StockMovements (
-                        product_id, quantity, movement_type,
-                        reference, user_id, created_at
-                    ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (product_id, quantity, movement_type, reference, user_id))
+                # Try to record stock movement if table exists
+                try:
+                    cursor.execute("""
+                        INSERT INTO StockMovements (
+                            product_id, quantity, movement_type,
+                            reference, user_id, created_at
+                        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """, (product_id, quantity, movement_type, reference, user_id))
+                except sqlite3.OperationalError:
+                    pass  # StockMovements table might not exist
 
                 cursor.execute("COMMIT")
                 
@@ -533,8 +505,8 @@ def update_stock(product_id, quantity, movement_type='adjustment', reference=Non
                 conn.close()
         return False
 
-@staticmethod
-def get_product(product_id):
+    @staticmethod
+    def get_product(product_id):
         conn = get_connection()
         if conn:
             try:
@@ -552,8 +524,8 @@ def get_product(product_id):
                 conn.close()
         return None
 
-@staticmethod
-def search_products(query):
+    @staticmethod
+    def search_products(query):
         conn = get_connection()
         if conn:
             try:
@@ -578,8 +550,8 @@ def search_products(query):
                 conn.close()
         return []
 
-@staticmethod
-def get_product_suppliers(product_id):
+    @staticmethod
+    def get_product_suppliers(product_id):
         conn = get_connection()
         if conn:
             try:
@@ -600,83 +572,8 @@ def get_product_suppliers(product_id):
                 conn.close()
         return []
 
-@staticmethod
-def add_product(name, unit_price=0, purchase_price=0, stock=0, category_id=None, has_variants=False, variant_attributes=None, **kwargs):
-    conn = get_connection()
-    if conn:
-        try:
-            cursor = conn.cursor()
-            
-            # Prepare fields and values
-            fields = ['name', 'unit_price', 'purchase_price', 'stock', 'category_id', 'has_variants']
-            values = [name, unit_price, purchase_price, stock, category_id, has_variants]
-            
-            # Add variant_attributes if present
-            if variant_attributes:
-                fields.append('variant_attributes')
-                values.append(json.dumps(variant_attributes) if isinstance(variant_attributes, list) else variant_attributes)
-            
-            # Add optional fields
-            optional_fields = [
-                'barcode', 'description', 'image_path', 'unit', 
-                'weight', 'volume', 'status', 'product_type',
-                'valuation_method', 'min_stock', 'reorder_point'
-            ]
-            
-            for field in optional_fields:
-                if field in kwargs and kwargs[field] is not None:
-                    fields.append(field)
-                    values.append(kwargs[field])
-            
-            # Add timestamps
-            current_time = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
-            fields.extend(['created_at', 'updated_at'])
-            values.extend([current_time, current_time])
-            
-            # Create the SQL query
-            query = f"""
-                INSERT INTO Products ({', '.join(fields)})
-                VALUES ({', '.join(['?' for _ in fields])})
-            """
-            
-            cursor.execute(query, values)
-            product_id = cursor.lastrowid
-            
-            # Calculate and update profit margin if both prices are provided
-            if unit_price and purchase_price:
-                profit_margin = ((unit_price - purchase_price) / purchase_price) * 100
-                cursor.execute("""
-                    UPDATE Products 
-                    SET profit_margin = ?
-                    WHERE id = ?
-                """, (profit_margin, product_id))
-            
-            # Add default supplier if provided
-            if 'supplier_id' in kwargs and kwargs['supplier_id']:
-                cursor.execute("""
-                    INSERT INTO ProductSuppliers (
-                        product_id, supplier_id, price, 
-                        lead_time, minimum_order
-                    ) VALUES (?, ?, ?, ?, ?)
-                """, (
-                    product_id, 
-                    kwargs['supplier_id'],
-                    kwargs.get('supplier_price', purchase_price),
-                    kwargs.get('lead_time'),
-                    kwargs.get('minimum_order')
-                ))
-            
-            conn.commit()
-            return product_id
-        except Exception as e:
-            print(f"Error adding product: {e}")
-            return None
-        finally:
-            conn.close()
-    return None
-
-@staticmethod
-def cleanup_database():
+    @staticmethod
+    def cleanup_database():
         """Clean up any NULL values in the database"""
         conn = get_connection()
         if conn:
