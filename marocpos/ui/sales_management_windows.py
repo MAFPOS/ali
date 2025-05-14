@@ -143,6 +143,16 @@ class SalesManagementWindow(QWidget):
         self.total_amount.setText(f"{total:.2f} MAD")
         self.current_amount = total
 
+    def open_receipt_settings(self):
+        """Open receipt settings dialog"""
+        try:
+            from .receipt_settings_dialog import ReceiptSettingsDialog
+            dialog = ReceiptSettingsDialog(self)
+            dialog.exec_()
+        except Exception as e:
+            print(f"Error opening receipt settings: {e}")
+            QMessageBox.warning(self, "Erreur", f"Impossible d'ouvrir les paramètres du reçu: {str(e)}")
+    
     def process_sale(self):
         """Process the sale and save to database"""
         if self.cart_table.rowCount() == 0:
@@ -200,7 +210,42 @@ class SalesManagementWindow(QWidget):
                     """, (quantity, product_id))
                 
                 cursor.execute("COMMIT")
-                QMessageBox.information(self, "Succès", "Vente enregistrée avec succès!")
+                
+                # Show success message
+                QMessageBox.information(self, "Succès", f"Vente #{sale_id} enregistrée avec succès!")
+                
+                # Generate receipt based on selected option
+                receipt_option = self.receipt_options.currentIndex()
+                
+                # Only generate receipt if not "Ne pas imprimer" (index 3)
+                if receipt_option < 3:
+                    try:
+                        # Import the receipt generator
+                        from .receipt_generator import ReceiptGenerator
+                        
+                        # Create receipt generator for this sale
+                        receipt = ReceiptGenerator(sale_id, self)
+                        
+                        # Handle different receipt options
+                        if receipt_option == 0:  # Thermal
+                            receipt.print_thermal()
+                        elif receipt_option == 1:  # A4
+                            receipt.print_a4()
+                        elif receipt_option == 2:  # PDF
+                            receipt.generate_pdf()
+                        else:
+                            # Show the receipt preview dialog with all options
+                            receipt.show_receipt_dialog()
+                            
+                    except Exception as e:
+                        print(f"Error generating receipt: {e}")
+                        QMessageBox.warning(
+                            self, 
+                            "Erreur d'impression", 
+                            f"La vente a été enregistrée mais il y a eu une erreur lors de l'impression du reçu: {str(e)}"
+                        )
+                
+                # Clear the cart
                 self.clear_cart()
                 
             except Exception as e:

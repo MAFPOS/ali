@@ -277,6 +277,155 @@ class Product:
         return []
 
     @staticmethod
+    def get_stock_movements(product_id, variant_id=None):
+        """Get stock movement history for a product"""
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                
+                # Query base with parameters
+                query = """
+                    SELECT 
+                        sm.id, sm.product_id, sm.variant_id, 
+                        sm.movement_type, sm.quantity, sm.unit_price,
+                        sm.reference, sm.notes, u.username as user_name,
+                        sm.created_at
+                    FROM StockMovements sm
+                    LEFT JOIN Users u ON sm.user_id = u.id
+                    WHERE sm.product_id = ?
+                """
+                params = [product_id]
+                
+                # Add variant filter if specified
+                if variant_id:
+                    query += " AND sm.variant_id = ?"
+                    params.append(variant_id)
+                
+                # Sort by date (newest first)
+                query += " ORDER BY sm.created_at DESC"
+                
+                cursor.execute(query, params)
+                movements = cursor.fetchall()
+                
+                # Convert to dictionaries
+                return [dict(movement) for movement in movements]
+            except Exception as e:
+                print(f"Error getting stock movements: {e}")
+                return []
+            finally:
+                conn.close()
+        return []
+    
+    @staticmethod 
+    def add_stock_movement(product_id, variant_id, movement_type, quantity, unit_price, reference, notes, user_id):
+        """Add a stock movement record"""
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                
+                # Start a transaction
+                cursor.execute("BEGIN TRANSACTION")
+                
+                # Insert movement record
+                cursor.execute("""
+                    INSERT INTO StockMovements (
+                        product_id, variant_id, movement_type, 
+                        quantity, unit_price, reference, 
+                        notes, user_id, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (
+                    product_id, variant_id, movement_type,
+                    quantity, unit_price, reference,
+                    notes, user_id
+                ))
+                
+                movement_id = cursor.lastrowid
+                
+                # Update product or variant stock
+                if variant_id:
+                    cursor.execute("""
+                        UPDATE ProductVariants
+                        SET stock = stock + ?,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (quantity, variant_id))
+                else:
+                    cursor.execute("""
+                        UPDATE Products
+                        SET stock = stock + ?,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (quantity, product_id))
+                
+                cursor.execute("COMMIT")
+                return movement_id
+            except Exception as e:
+                cursor.execute("ROLLBACK")
+                print(f"Error adding stock movement: {e}")
+                return None
+            finally:
+                conn.close()
+        return None
+    
+    @staticmethod
+    def delete_stock_movement(movement_id):
+        """Delete a stock movement and revert its effects"""
+        conn = get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                
+                # Start a transaction
+                cursor.execute("BEGIN TRANSACTION")
+                
+                # Get the movement details
+                cursor.execute("""
+                    SELECT product_id, variant_id, quantity
+                    FROM StockMovements
+                    WHERE id = ?
+                """, (movement_id,))
+                
+                movement = cursor.fetchone()
+                if not movement:
+                    cursor.execute("ROLLBACK")
+                    return False
+                
+                product_id = movement['product_id']
+                variant_id = movement['variant_id']
+                quantity = movement['quantity']
+                
+                # Reverse the stock change
+                if variant_id:
+                    cursor.execute("""
+                        UPDATE ProductVariants
+                        SET stock = stock - ?,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (quantity, variant_id))
+                else:
+                    cursor.execute("""
+                        UPDATE Products
+                        SET stock = stock - ?,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (quantity, product_id))
+                
+                # Delete the movement record
+                cursor.execute("DELETE FROM StockMovements WHERE id = ?", (movement_id,))
+                
+                cursor.execute("COMMIT")
+                return True
+            except Exception as e:
+                cursor.execute("ROLLBACK")
+                print(f"Error deleting stock movement: {e}")
+                return False
+            finally:
+                conn.close()
+        return False
+        
+    @staticmethod
     def update_variant(variant_id, **kwargs):
         conn = get_connection()
         if conn:
