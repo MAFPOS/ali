@@ -47,10 +47,18 @@ class User:
                 # Add new columns if they don't exist
                 if 'last_login' not in existing_columns:
                     cursor.execute("ALTER TABLE Users ADD COLUMN last_login TIMESTAMP")
+                
+                # SQLite doesn't allow adding columns with DEFAULT CURRENT_TIMESTAMP
+                # Add columns without defaults, then update existing rows
+                current_time = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+                
                 if 'created_at' not in existing_columns:
-                    cursor.execute("ALTER TABLE Users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                    cursor.execute("ALTER TABLE Users ADD COLUMN created_at TIMESTAMP")
+                    cursor.execute("UPDATE Users SET created_at = ? WHERE created_at IS NULL", (current_time,))
+                    
                 if 'updated_at' not in existing_columns:
-                    cursor.execute("ALTER TABLE Users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                    cursor.execute("ALTER TABLE Users ADD COLUMN updated_at TIMESTAMP")
+                    cursor.execute("UPDATE Users SET updated_at = ? WHERE updated_at IS NULL", (current_time,))
 
                 conn.commit()
                 return True
