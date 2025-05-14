@@ -1,9 +1,8 @@
-from tkinter import Widget
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QFormLayout, QSpinBox, QDoubleSpinBox,
     QComboBox, QTextEdit, QFileDialog, QMessageBox,
-    QCheckBox, QGroupBox, QScrollArea, QFrame
+    QCheckBox, QGroupBox, QScrollArea, QFrame, QWidget
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
@@ -29,7 +28,7 @@ class AddProductDialog(QDialog):
         main_layout = QVBoxLayout()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll_content = Widget()
+        scroll_content = QWidget()
         form_layout = QFormLayout()
 
         # Basic Information Group

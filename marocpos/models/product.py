@@ -345,7 +345,12 @@ class Product:
                         values.append(kwargs[field])
                 
                 # Add timestamps
-                current_time = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+                try:
+                    # For Python 3.11+
+                    current_time = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+                except AttributeError:
+                    # For older Python versions
+                    current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
                 fields.extend(['created_at', 'updated_at'])
                 values.extend([current_time, current_time])
                 

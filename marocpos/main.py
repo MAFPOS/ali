@@ -50,7 +50,12 @@ def main():
     app = QApplication(sys.argv)
     
     # Set current date/time format
-    current_datetime = datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        # Try using the newer Python 3.11+ approach
+        current_datetime = datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S")
+    except AttributeError:
+        # Fall back to the older method for compatibility
+        current_datetime = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     print(f"Current Date and Time (UTC): {current_datetime}")
     
     print("Launching login window...")
