@@ -114,16 +114,22 @@ class ProductManagementWindow(QWidget):
             self.category_filter.addItem(category[1], category[0])
 
     def load_products(self, category_id=None):
-        """Load products from database"""
+        """Load products from database using more reliable methods"""
         try:
             # Clear table
             self.products_table.setRowCount(0)
             
-            # Get products
+            # Get products using more reliable helpers
+            from ui.product_helpers import get_all_products_reliable, get_products_by_category_reliable, debug_log
+            
+            debug_log(f"Loading products for category_id: {category_id}")
+            
             if category_id:
-                products = Product.get_products_by_category(category_id)
+                products = get_products_by_category_reliable(category_id)
             else:
-                products = Product.get_all_products()
+                products = get_all_products_reliable()
+            
+            debug_log(f"Found {len(products)} products")
             
             # Set row count
             self.products_table.setRowCount(len(products))
@@ -137,6 +143,8 @@ class ProductManagementWindow(QWidget):
                     purchase_price = float(product_dict.get('purchase_price', 0))
                     stock = int(product_dict.get('stock', 0))
                     min_stock = int(product_dict.get('min_stock', 0))
+                    
+                    debug_log(f"Processing product row {row}: ID={product_id}, Name={product_dict.get('name')}")
                     
                     # ID column
                     id_item = QTableWidgetItem(str(product_id))
@@ -296,17 +304,38 @@ class ProductManagementWindow(QWidget):
             QMessageBox.warning(self, "Erreur", f"Erreur lors de l'ajout du produit: {str(e)}")
 
     def edit_product(self, product):
-        """Open edit product dialog"""
+        """Open edit product dialog with enhanced error handling"""
         try:
+            from ui.product_helpers import debug_log, get_product_by_id, handle_error
+            
+            debug_log(f"Opening edit dialog for product ID {product.get('id')}")
+            
+            # Reload product to ensure we have the most current data
+            product_id = product.get('id')
+            if product_id:
+                fresh_product = get_product_by_id(product_id)
+                if fresh_product:
+                    product = fresh_product
+                    debug_log(f"Successfully loaded fresh product data for ID {product_id}")
+                else:
+                    debug_log(f"Could not load fresh product data for ID {product_id}, using provided data")
+            
+            # Import dialog and show it
             from .edit_product_dialog import EditProductDialog
             dialog = EditProductDialog(product, self)
             
             if dialog.exec_():
+                debug_log(f"Product {product_id} successfully edited, reloading product list")
                 self.load_products()
                 QMessageBox.information(self, "Succès", "Produit modifié avec succès!")
+            else:
+                debug_log(f"Edit dialog cancelled for product {product_id}")
+                
         except Exception as e:
-            print(f"Error editing product: {e}")
-            QMessageBox.warning(self, "Erreur", f"Erreur lors de la modification du produit: {str(e)}")
+            debug_log(f"Error editing product: {e}")
+            import traceback
+            debug_log(traceback.format_exc())
+            handle_error(self, "Erreur d'édition", "Impossible de modifier le produit", e)
 
     def delete_product(self, product_id):
         """Delete a product"""
