@@ -219,38 +219,47 @@ class AddProductDialog(QDialog):
         
     def manage_variants(self):
         """Open the variant management dialog"""
-        from .variant_management_dialog import VariantManagementDialog
+        try:
+            # Import dynamically to avoid circular dependencies
+            module = __import__('ui.variant_management_dialog', fromlist=['VariantManagementDialog'])
+            VariantManagementDialog = module.VariantManagementDialog
 
-        # Collect selected attributes
-        selected_attrs = [
-            attr for attr, cb in self.variant_attributes 
-            if cb.isChecked()
-        ]
-        
-        # Show the variant management dialog
-        dialog = VariantManagementDialog(
-            product_id=self.product['id'] if self.product else None,
-            parent=self,
-            variant_attributes=selected_attrs
-        )
-        
-        if dialog.exec_():
-            # Get the variant data
-            self.variants_data = dialog.get_variants_data()
-            # Update attribute list
-            attr_names = dialog.get_attribute_names()
+            # Collect selected attributes
+            selected_attrs = [
+                attr for attr, cb in self.variant_attributes 
+                if cb.isChecked()
+            ]
             
-            # Update variant count label
-            if self.variants_data:
-                self.variant_count_label.setText(f"{len(self.variants_data)} variantes configurées")
-                self.variant_count_label.setStyleSheet("color: green; font-weight: bold;")
-            else:
-                self.variant_count_label.setText("Aucune variante configurée")
-                self.variant_count_label.setStyleSheet("color: #666;")
+            product_id = None
+            if self.product and 'id' in self.product:
+                product_id = self.product['id']
                 
-            # Update the selected attributes in the UI
-            for attr, cb in self.variant_attributes:
-                cb.setChecked(attr in attr_names)
+            # Show the variant management dialog
+            dialog = VariantManagementDialog(
+                product_id=product_id,
+                parent=self,
+                variant_attributes=selected_attrs
+            )
+            
+            if dialog.exec_():
+                # Get the variant data
+                self.variants_data = dialog.get_variants_data()
+                # Update attribute list
+                attr_names = dialog.get_attribute_names()
+                
+                # Update variant count label
+                if self.variants_data:
+                    self.variant_count_label.setText(f"{len(self.variants_data)} variantes configurées")
+                    self.variant_count_label.setStyleSheet("color: green; font-weight: bold;")
+                else:
+                    self.variant_count_label.setText("Aucune variante configurée")
+                    self.variant_count_label.setStyleSheet("color: #666;")
+                    
+                # Update the selected attributes in the UI
+                for attr, cb in self.variant_attributes:
+                    cb.setChecked(attr in attr_names)
+        except Exception as e:
+            QMessageBox.warning(self, "Erreur", f"Erreur lors de l'ouverture du gestionnaire de variantes: {str(e)}")
 
     def add_custom_attribute(self):
         attr_name = self.custom_attr_input.text().strip()
@@ -268,16 +277,180 @@ class AddProductDialog(QDialog):
             )
             self.custom_attr_input.clear()
 
-    # ... (rest of the methods remain the same)
+    def calculate_margin(self):
+        """Calculate profit margin percentage"""
+        try:
+            selling = self.selling_price.value()
+            purchase = self.purchase_price.value()
+            
+            if purchase > 0:
+                margin = ((selling - purchase) / purchase) * 100
+                self.margin_label.setText(f"{margin:.1f}%")
+                
+                # Change color based on margin
+                if margin < 0:
+                    self.margin_label.setStyleSheet("color: red; font-weight: bold;")
+                elif margin < 10:
+                    self.margin_label.setStyleSheet("color: orange; font-weight: bold;")
+                else:
+                    self.margin_label.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                self.margin_label.setText("N/A")
+                self.margin_label.setStyleSheet("color: grey;")
+        except Exception as e:
+            print(f"Error calculating margin: {e}")
+            self.margin_label.setText("Erreur")
+
+    def load_categories(self):
+        """Load categories into combo box"""
+        try:
+            # Clear existing items
+            self.category_combo.clear()
+            
+            # Add "No category" option
+            self.category_combo.addItem("Aucune catégorie", None)
+            
+            # Get categories from database
+            categories = Category.get_all_categories()
+            for category in categories:
+                self.category_combo.addItem(category[1], category[0])  # name, id
+        except Exception as e:
+            print(f"Error loading categories: {e}")
+
+    def select_image(self):
+        """Open file dialog to select product image"""
+        try:
+            file_dialog = QFileDialog()
+            file_path, _ = file_dialog.getOpenFileName(
+                self, "Sélectionner une image", "", 
+                "Images (*.png *.jpg *.jpeg)"
+            )
+            
+            if file_path:
+                # Create images directory if it doesn't exist
+                images_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'images')
+                os.makedirs(images_dir, exist_ok=True)
+                
+                # Copy the file to images directory with a unique name
+                file_name = os.path.basename(file_path)
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                new_file_name = f"{timestamp}_{file_name}"
+                new_file_path = os.path.join(images_dir, new_file_name)
+                
+                # Copy the file
+                shutil.copy2(file_path, new_file_path)
+                
+                # Update image path and preview
+                self.image_path = new_file_path
+                self.update_image_preview()
+        except Exception as e:
+            QMessageBox.warning(self, "Erreur", f"Erreur lors de la sélection de l'image: {str(e)}")
+
+    def update_image_preview(self):
+        """Update the image preview label"""
+        if self.image_path and os.path.exists(self.image_path):
+            pixmap = QPixmap(self.image_path)
+            if not pixmap.isNull():
+                pixmap = pixmap.scaled(
+                    self.image_label.width(), 
+                    self.image_label.height(),
+                    Qt.KeepAspectRatio, 
+                    Qt.SmoothTransformation
+                )
+                self.image_label.setPixmap(pixmap)
+            else:
+                self.image_label.setText("Image invalide")
+        else:
+            self.image_label.clear()
+            self.image_label.setText("Aucune image")
+
+    def fill_product_data(self):
+        """Fill form with product data when editing"""
+        try:
+            if not self.product:
+                return
+                
+            # Basic information
+            self.barcode_input.setText(str(self.product.get('barcode', '')))
+            self.name_input.setText(str(self.product.get('name', '')))
+            self.description_input.setText(str(self.product.get('description', '')))
+            
+            # Prices
+            self.selling_price.setValue(float(self.product.get('unit_price', 0)))
+            self.purchase_price.setValue(float(self.product.get('purchase_price', 0)))
+            
+            # Stock
+            self.stock_input.setValue(int(self.product.get('stock', 0)))
+            self.min_stock.setValue(int(self.product.get('min_stock', 0)))
+            
+            # Category
+            category_id = self.product.get('category_id')
+            if category_id:
+                # Find the index of the category in the combo box
+                index = self.category_combo.findData(category_id)
+                if index >= 0:
+                    self.category_combo.setCurrentIndex(index)
+            
+            # Image
+            self.image_path = self.product.get('image_path')
+            self.update_image_preview()
+            
+            # Variants
+            has_variants = self.product.get('has_variants', False)
+            self.has_variants.setChecked(has_variants)
+            
+            # Variant attributes
+            if has_variants and self.product.get('variant_attributes'):
+                try:
+                    # Parse variant attributes
+                    attributes = []
+                    if isinstance(self.product['variant_attributes'], str):
+                        attributes = json.loads(self.product['variant_attributes'])
+                    else:
+                        attributes = self.product['variant_attributes']
+                    
+                    # Check the corresponding checkboxes
+                    for attr, cb in self.variant_attributes:
+                        if attr in attributes:
+                            cb.setChecked(True)
+                except Exception as e:
+                    print(f"Error parsing variant attributes: {e}")
+        except Exception as e:
+            print(f"Error filling product data: {e}")
+
+    def validate_and_accept(self):
+        """Validate form data and accept dialog"""
+        # Check required fields
+        name = self.name_input.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Validation", "Veuillez entrer un nom pour le produit.")
+            return
+        
+        # Check if product has variants but no attributes selected
+        if self.has_variants.isChecked():
+            selected_attrs = [attr for attr, cb in self.variant_attributes if cb.isChecked()]
+            if not selected_attrs:
+                QMessageBox.warning(self, "Validation", "Vous avez activé les variantes mais aucun attribut n'est sélectionné.")
+                return
+        
+        # All validation passed
+        self.accept()
 
     def manage_attributes(self):
         """Open the attribute management dialog"""
-        from .attribute_management_dialog import AttributeManagementDialog
-        dialog = AttributeManagementDialog(self)
-        dialog.exec_()
-        # We could refresh our attribute list here if needed
+        try:
+            # Import dynamically to avoid circular dependencies
+            module = __import__('ui.attribute_management_dialog', fromlist=['AttributeManagementDialog'])
+            AttributeManagementDialog = module.AttributeManagementDialog
+            
+            dialog = AttributeManagementDialog(self)
+            dialog.exec_()
+            # We could refresh our attribute list here if needed
+        except Exception as e:
+            QMessageBox.warning(self, "Erreur", f"Erreur lors de l'ouverture du gestionnaire d'attributs: {str(e)}")
 
     def get_product_data(self):
+        """Get product data from form"""
         selected_attrs = [
             attr for attr, cb in self.variant_attributes 
             if cb.isChecked()
