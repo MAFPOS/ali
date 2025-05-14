@@ -151,9 +151,21 @@ class DashboardWindow(QMainWindow):
         self.sales_mgmt_layout.setContentsMargins(0, 0, 0, 0)
         
         # Initially show sales management
-        self.sales_mgmt_window = SalesManagementWindow()
-        self.sales_mgmt_layout.addWidget(self.sales_mgmt_window)
-        layout.addWidget(self.sales_mgmt_area)
+        try:
+            # Dynamically import sales management window
+            module = __import__('ui.sales_management_windows', fromlist=['SalesManagementWindow'])
+            SalesManagementWindow = module.SalesManagementWindow
+            
+            self.sales_mgmt_window = SalesManagementWindow()
+            self.sales_mgmt_layout.addWidget(self.sales_mgmt_window)
+            layout.addWidget(self.sales_mgmt_area)
+        except Exception as e:
+            print(f"Error loading sales management window: {e}")
+            # Create a placeholder label if cannot load the sales window
+            error_label = QLabel("Could not load sales management")
+            error_label.setStyleSheet("color: red; font-size: 16px;")
+            self.sales_mgmt_layout.addWidget(error_label)
+            layout.addWidget(self.sales_mgmt_area)
 
         return content
 
@@ -212,13 +224,15 @@ class DashboardWindow(QMainWindow):
 
     def filter_by_category(self, category_id):
         # Pass the category filter to the sales management window
-        if hasattr(self, 'sales_mgmt_window'):
+        if hasattr(self, 'sales_mgmt_window') and self.sales_mgmt_window is not None:
             try:
                 # Only call if the method exists
                 if hasattr(self.sales_mgmt_window, 'filter_by_category'):
                     self.sales_mgmt_window.filter_by_category(category_id)
             except Exception as e:
                 print(f"Error filtering by category: {e}")
+        else:
+            print("Cannot filter categories: Sales management window not loaded")
 
     def open_window(self, window_class_name, window_name):
         """Open a window and track it to prevent duplicates."""
