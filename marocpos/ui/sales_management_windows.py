@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLabel, QFrame, QHeaderView, QScrollArea, QMessageBox
+    QPushButton, QLabel, QFrame, QHeaderView, QScrollArea, QMessageBox, QComboBox
 )
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont, QCursor
@@ -9,6 +9,7 @@ from models.product import Product
 from database import get_connection
 from datetime import datetime
 import pytz
+import os
 
 class ProductFrame(QFrame):
     def __init__(self, product, parent=None):
@@ -31,10 +32,30 @@ class ProductFrame(QFrame):
 
         layout = QVBoxLayout(self)
         
+        # Product image
+        if self.product.get('image_path'):
+            from PyQt5.QtGui import QPixmap
+            import os
+            
+            image_path = self.product['image_path']
+            if os.path.exists(image_path):
+                image_label = QLabel()
+                pixmap = QPixmap(image_path)
+                if not pixmap.isNull():
+                    scaled_pixmap = pixmap.scaled(
+                        100, 100,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                    image_label.setPixmap(scaled_pixmap)
+                    image_label.setAlignment(Qt.AlignCenter)
+                    layout.addWidget(image_label)
+        
         # Product name
         name_label = QLabel(self.product['name'])
         name_label.setAlignment(Qt.AlignCenter)
         name_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        name_label.setWordWrap(True)
         
         # Product price
         price_label = QLabel(f"{self.product['unit_price']:.2f} MAD")
@@ -46,273 +67,48 @@ class ProductFrame(QFrame):
         stock_label.setAlignment(Qt.AlignCenter)
         stock_label.setStyleSheet("color: #6c757d; font-size: 12px;")
         
+        # Has variants label
+        if self.product.get('has_variants'):
+            variant_label = QLabel("(Avec variantes)")
+            variant_label.setAlignment(Qt.AlignCenter)
+            variant_label.setStyleSheet("color: #0066cc; font-style: italic; font-size: 11px;")
+            layout.addWidget(variant_label)
+            
         layout.addWidget(name_label)
         layout.addWidget(price_label)
         layout.addWidget(stock_label)
-     ######
+
 class SalesManagementWindow(QWidget):
-    def __init__(self, username="MAFPOS", user_id=1):
+    def __init__(self, user=None):
         super().__init__()
-        self.username = username
-        self.user_id = user_id  # Store user ID for sales recording
-        self.current_datetime = datetime.now(pytz.UTC)
-        self.current_amount = 0.0  # Track the current amount
-        self.selected_product = None  # Track selected product
-        self.selected_row = None  # Track selected row in cart
+        self.user_id = user['id'] if user else 1  # Default to user ID 1 if not provided
+        self.current_datetime = datetime.now()
+        self.current_amount = 0.0
+        self.selected_row = None
+        self.selected_product = None
         self.init_ui()
-        
-        # Setup timer for datetime updates
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_datetime)
-        self.timer.start(1000)
+        self.setup_categories()
+        self.load_products()
 
-    def clear_cart(self):
-        """Clear all items from the cart"""
-        reply = QMessageBox.question(
-            self, 'Confirmation',
-            'Voulez-vous vraiment vider le panier ?',
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-
-        if reply == QMessageBox.Yes:
-            self.cart_table.setRowCount(0)
-            self.update_total()
-            self.current_amount = 0.0
-            self.selected_product = None
-
-    def keypad_pressed(self, text):
-        """Handle keypad button presses"""
-        # Check if a row is selected
-        if self.selected_row is None or self.selected_product is None:
-            # No row selected, show warning
-            QMessageBox.warning(self, "Attention", "Veuillez sélectionner un produit dans le panier d'abord.")
-            return
-            
-        try:
-            current_qty = self.cart_table.item(self.selected_row, 1).text()
-            
-            if text == 'C':
-                # Clear and set to 1
-                new_qty = '1'
-            elif text == '.' and '.' in current_qty:
-                # Don't allow multiple decimal points
-                return
-            else:
-                # Add the text to the current quantity
-                new_qty = current_qty + text
-                
-            # Try to convert to float and update if valid
-            try:
-                qty = float(new_qty) if new_qty else 1  # Default to 1 if empty
-                if qty > 0:
-                    self.cart_table.setItem(self.selected_row, 1, QTableWidgetItem(str(qty)))
-                    self.update_total()
-            except ValueError:
-                # Invalid number, keep the current value
-                pass
-        except Exception as e:
-            print(f"Error in keypad_pressed: {e}")
-
-    def remove_from_cart(self, row):
-        """Remove an item from the cart"""
-        reply = QMessageBox.question(
-            self, 'Confirmation',
-            'Voulez-vous retirer cet article du panier ?',
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-
-        if reply == QMessageBox.Yes:
-            self.cart_table.removeRow(row)
-            self.update_total()
-            if row == getattr(self, 'selected_row', None):
-                self.selected_product = None
-
-    def update_total(self):
-        """Update the total amount in the cart"""
-        total = 0.0
-        for row in range(self.cart_table.rowCount()):
-            try:
-                qty = float(self.cart_table.item(row, 1).text())
-                price = float(self.cart_table.item(row, 2).text())
-                total += qty * price
-            except (ValueError, AttributeError):
-                continue
-        
-        self.total_amount.setText(f"{total:.2f} MAD")
-        self.current_amount = total
-
-    def open_receipt_settings(self):
-        """Open receipt settings dialog"""
-        try:
-            from .receipt_settings_dialog import ReceiptSettingsDialog
-            dialog = ReceiptSettingsDialog(self)
-            dialog.exec_()
-        except Exception as e:
-            print(f"Error opening receipt settings: {e}")
-            QMessageBox.warning(self, "Erreur", f"Impossible d'ouvrir les paramètres du reçu: {str(e)}")
-    
-    def process_sale(self):
-        """Process the sale and save to database"""
-        if self.cart_table.rowCount() == 0:
-            QMessageBox.warning(self, "Erreur", "Le panier est vide!")
-            return
-
-        try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            # Start transaction
-            cursor.execute("BEGIN TRANSACTION")
-            
-            try:
-                # Create sale record
-                cursor.execute("""
-                    INSERT INTO Sales (
-                        date, 
-                        total_amount, 
-                        user_id
-                    ) VALUES (?, ?, ?)
-                """, (
-                    self.current_datetime.strftime("%Y-%m-%d %H:%M:%S"),
-                    self.current_amount,
-                    self.user_id  # Use the user_id from instance
-                ))
-                
-                sale_id = cursor.lastrowid
-                
-                # Add sale items
-                for row in range(self.cart_table.rowCount()):
-                    product_name = self.cart_table.item(row, 0).text()
-                    quantity = float(self.cart_table.item(row, 1).text())
-                    price = float(self.cart_table.item(row, 2).text())
-                    
-                    # Get product ID
-                    cursor.execute("SELECT id FROM Products WHERE name = ?", (product_name,))
-                    product_id = cursor.fetchone()[0]
-                    
-                    # Add sale item
-                    cursor.execute("""
-                        INSERT INTO SaleItems (
-                            sale_id,
-                            product_id,
-                            quantity,
-                            unit_price
-                        ) VALUES (?, ?, ?, ?)
-                    """, (sale_id, product_id, quantity, price))
-                    
-                    # Update product stock
-                    cursor.execute("""
-                        UPDATE Products 
-                        SET stock = stock - ? 
-                        WHERE id = ?
-                    """, (quantity, product_id))
-                
-                cursor.execute("COMMIT")
-                
-                # Show success message
-                QMessageBox.information(self, "Succès", f"Vente #{sale_id} enregistrée avec succès!")
-                
-                # Generate receipt based on selected option
-                receipt_option = self.receipt_options.currentIndex()
-                
-                # Only generate receipt if not "Ne pas imprimer" (index 3)
-                if receipt_option < 3:
-                    try:
-                        # Import the receipt generator
-                        from .receipt_generator import ReceiptGenerator
-                        
-                        # Create receipt generator for this sale
-                        receipt = ReceiptGenerator(sale_id, self)
-                        
-                        # Handle different receipt options
-                        if receipt_option == 0:  # Thermal
-                            receipt.print_thermal()
-                        elif receipt_option == 1:  # A4
-                            receipt.print_a4()
-                        elif receipt_option == 2:  # PDF
-                            receipt.generate_pdf()
-                        else:
-                            # Show the receipt preview dialog with all options
-                            receipt.show_receipt_dialog()
-                            
-                    except Exception as e:
-                        print(f"Error generating receipt: {e}")
-                        QMessageBox.warning(
-                            self, 
-                            "Erreur d'impression", 
-                            f"La vente a été enregistrée mais il y a eu une erreur lors de l'impression du reçu: {str(e)}"
-                        )
-                
-                # Clear the cart
-                self.clear_cart()
-                
-            except Exception as e:
-                cursor.execute("ROLLBACK")
-                QMessageBox.warning(self, "Erreur", f"Erreur lors de l'enregistrement de la vente: {str(e)}")
-                
-        except Exception as e:
-            QMessageBox.warning(self, "Erreur", f"Erreur de connexion à la base de données: {str(e)}")
-        finally:
-            if conn:
-                conn.close()
-
-    def update_datetime(self):
-        """Update the datetime display"""
-        self.current_datetime = datetime.now(pytz.UTC)
-        formatted_date = self.current_datetime.strftime("%Y-%m-%d %H:%M:%S")
-        self.datetime_label.setText(f"Date: {formatted_date}")
-        
-    def on_cart_item_clicked(self, item):
-        """Handle cart item selection"""
-        self.selected_row = item.row()
-        self.selected_product = self.cart_table.item(self.selected_row, 0).text()
-        # Select the entire row
-        self.cart_table.selectRow(self.selected_row)
-################################################
     def init_ui(self):
+        self.setWindowTitle("Gestion des ventes")
+        self.resize(1200, 800)
+        
         # Main layout
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-
-        # Create left and right sections
-        left_section = self.create_left_section()
-        right_section = self.create_right_section()
-
-        main_layout.addWidget(left_section, 1)  # 1 for stretch factor
-        main_layout.addWidget(right_section, 2)  # 2 for stretch factor
+        
+        # Left section (cart and keypad)
+        left_widget = self.create_left_section()
+        main_layout.addWidget(left_widget)
+        
+        # Right section (categories and products)
+        right_widget = self.create_right_section()
+        main_layout.addWidget(right_widget, 2)  # Right section takes 2/3 of space
 
     def create_left_section(self):
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(20, 20, 20, 20)
-        left_layout.setSpacing(20)
-
-        # Header with user info and datetime
-        header_frame = QFrame()
-        header_frame.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border-radius: 10px;
-                padding: 10px;
-            }
-        """)
-        header_layout = QVBoxLayout(header_frame)
         
-        # User info
-        user_label = QLabel(f"Utilisateur: {self.username}")
-        user_label.setStyleSheet("font-weight: bold; color: #495057;")
-        header_layout.addWidget(user_label)
-        
-        # Datetime
-        self.datetime_label = QLabel()
-        self.datetime_label.setStyleSheet("color: #6c757d;")
-        header_layout.addWidget(self.datetime_label)
-        
-        left_layout.addWidget(header_frame)
-
         # Cart section
         cart_frame = QFrame()
         cart_frame.setStyleSheet("""
@@ -323,25 +119,28 @@ class SalesManagementWindow(QWidget):
             }
         """)
         cart_layout = QVBoxLayout(cart_frame)
-
+        
         # Cart header
-        cart_header = QHBoxLayout()
-        cart_title = QLabel("Panier")
-        cart_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #212529;")
-        cart_header.addWidget(cart_title)
-        cart_layout.addLayout(cart_header)
-
+        cart_header = QLabel("Panier")
+        cart_header.setStyleSheet("font-size: 18px; font-weight: bold;")
+        cart_layout.addWidget(cart_header)
+        
         # Cart table
         self.cart_table = QTableWidget()
-        self.cart_table.setColumnCount(4)
-        self.cart_table.setHorizontalHeaderLabels(["Produit", "Quantité", "Prix", ""])
+        self.cart_table.setColumnCount(4)  # Name, Quantity, Price, Remove
+        self.cart_table.setHorizontalHeaderLabels(["Produit", "Quantité", "Prix", "Actions"])
+        
+        # Set column widths
         self.cart_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.cart_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.cart_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.cart_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+        self.cart_table.setColumnWidth(1, 70)
+        self.cart_table.setColumnWidth(2, 70)
+        self.cart_table.setColumnWidth(3, 50)
+        
         self.cart_table.setStyleSheet("""
             QTableWidget {
-                border: none;
-                background-color: white;
-            }
-            QHeaderView::section {
                 background-color: #f8f9fa;
                 padding: 8px;
                 border: none;
@@ -494,56 +293,260 @@ class SalesManagementWindow(QWidget):
             }
         """)
 
-        self.products_widget = QWidget()
-        self.products_layout = QGridLayout(self.products_widget)
+        products_widget = QWidget()
+        self.products_layout = QGridLayout(products_widget)
         self.products_layout.setSpacing(10)
-        products_scroll.setWidget(self.products_widget)
+        products_scroll.setWidget(products_widget)
         
         right_layout.addWidget(products_scroll)
 
-        # Initial load of products
-        self.load_products()
+        # Add receipt options
+        receipt_layout = QHBoxLayout()
+        receipt_layout.addWidget(QLabel("Reçu:"))
+        
+        self.receipt_options = QComboBox()
+        self.receipt_options.addItems([
+            "Imprimer (thermique)",
+            "Imprimer (A4)",
+            "Enregistrer en PDF",
+            "Ne pas imprimer"
+        ])
+        receipt_layout.addWidget(self.receipt_options)
+        
+        receipt_settings_btn = QPushButton("⚙️")
+        receipt_settings_btn.setToolTip("Paramètres du reçu")
+        receipt_settings_btn.clicked.connect(self.open_receipt_settings)
+        receipt_layout.addWidget(receipt_settings_btn)
+        
+        right_layout.addLayout(receipt_layout)
 
         return right_widget
 
+    def on_cart_item_clicked(self, item):
+        """Handle click on cart item"""
+        self.selected_row = item.row()
+        
+        # If clicking on quantity column, select product for keypad
+        if self.cart_table.currentColumn() == 1:
+            self.selected_product = item.row()
+
+    def keypad_pressed(self, text):
+        """Handle keypad button press"""
+        try:
+            if self.selected_product is None:
+                return
+                
+            # Get current quantity
+            current_qty = self.cart_table.item(self.selected_row, 1).text()
+            
+            # Handle different keypad buttons
+            if text == 'C':
+                # Clear quantity
+                current_qty = ""
+            elif text == '×':
+                # Remove last digit
+                current_qty = current_qty[:-1] if current_qty else ""
+                return
+            else:
+                # Add the text to the current quantity
+                new_qty = current_qty + text
+                
+            # Try to convert to float and update if valid
+            try:
+                qty = float(new_qty) if new_qty else 1  # Default to 1 if empty
+                if qty > 0:
+                    self.cart_table.setItem(self.selected_row, 1, QTableWidgetItem(str(qty)))
+                    self.update_total()
+            except ValueError:
+                # Invalid number, keep the current value
+                pass
+        except Exception as e:
+            print(f"Error in keypad_pressed: {e}")
+
+    def open_receipt_settings(self):
+        """Open receipt settings dialog"""
+        try:
+            from .receipt_settings_dialog import ReceiptSettingsDialog
+            dialog = ReceiptSettingsDialog(self)
+            dialog.exec_()
+        except Exception as e:
+            print(f"Error opening receipt settings: {e}")
+            QMessageBox.warning(self, "Erreur", f"Impossible d'ouvrir les paramètres du reçu: {str(e)}")
+    
+    def process_sale(self):
+        """Process the sale and save to database"""
+        if self.cart_table.rowCount() == 0:
+            QMessageBox.warning(self, "Erreur", "Le panier est vide!")
+            return
+
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            # Start transaction
+            cursor.execute("BEGIN TRANSACTION")
+            
+            try:
+                # Create sale record
+                cursor.execute("""
+                    INSERT INTO Sales (
+                        created_at, 
+                        total_amount, 
+                        user_id
+                    ) VALUES (?, ?, ?)
+                """, (
+                    self.current_datetime.strftime("%Y-%m-%d %H:%M:%S"),
+                    self.current_amount,
+                    self.user_id  # Use the user_id from instance
+                ))
+                
+                sale_id = cursor.lastrowid
+                
+                # Add sale items
+                for row in range(self.cart_table.rowCount()):
+                    product_name = self.cart_table.item(row, 0).text()
+                    quantity = float(self.cart_table.item(row, 1).text())
+                    price = float(self.cart_table.item(row, 2).text())
+                    
+                    # Get product ID and variant ID from the item
+                    product_id = self.cart_table.item(row, 0).data(Qt.UserRole)
+                    variant_id = self.cart_table.item(row, 0).data(Qt.UserRole + 1)
+                    
+                    if not product_id:
+                        # Fallback to old method if ID not stored in item
+                        cursor.execute("SELECT id FROM Products WHERE name = ?", (product_name,))
+                        product_id = cursor.fetchone()[0]
+                    
+                    # Add sale item
+                    cursor.execute("""
+                        INSERT INTO SaleItems (
+                            sale_id,
+                            product_id,
+                            variant_id,
+                            quantity,
+                            unit_price
+                        ) VALUES (?, ?, ?, ?, ?)
+                    """, (sale_id, product_id, variant_id, quantity, price))
+                    
+                    # Update stock - different approach for variants vs regular products
+                    if variant_id:
+                        # Update variant stock
+                        cursor.execute("""
+                            UPDATE ProductVariants 
+                            SET stock = stock - ? 
+                            WHERE id = ?
+                        """, (quantity, variant_id))
+                    else:
+                        # Update product stock
+                        cursor.execute("""
+                            UPDATE Products 
+                            SET stock = stock - ? 
+                            WHERE id = ?
+                        """, (quantity, product_id))
+                
+                cursor.execute("COMMIT")
+                
+                # Show success message
+                QMessageBox.information(self, "Succès", f"Vente #{sale_id} enregistrée avec succès!")
+                
+                # Generate receipt based on selected option
+                receipt_option = self.receipt_options.currentIndex()
+                
+                # Only generate receipt if not "Ne pas imprimer" (index 3)
+                if receipt_option < 3:
+                    try:
+                        # Import the receipt generator
+                        from .receipt_generator import ReceiptGenerator
+                        
+                        # Create receipt generator for this sale
+                        receipt = ReceiptGenerator(sale_id, self)
+                        
+                        # Handle different receipt options
+                        if receipt_option == 0:  # Thermal
+                            receipt.print_thermal()
+                        elif receipt_option == 1:  # A4
+                            receipt.print_a4()
+                        elif receipt_option == 2:  # PDF
+                            receipt.generate_pdf()
+                        else:
+                            # Show the receipt preview dialog with all options
+                            receipt.show_receipt_dialog()
+                            
+                    except Exception as e:
+                        print(f"Error generating receipt: {e}")
+                        QMessageBox.warning(
+                            self, 
+                            "Erreur d'impression", 
+                            f"La vente a été enregistrée mais il y a eu une erreur lors de l'impression du reçu: {str(e)}"
+                        )
+                
+                # Clear the cart
+                self.clear_cart()
+                
+            except Exception as e:
+                cursor.execute("ROLLBACK")
+                QMessageBox.warning(self, "Erreur", f"Erreur lors de l'enregistrement de la vente: {str(e)}")
+                
+        except Exception as e:
+            QMessageBox.warning(self, "Erreur", f"Erreur de connexion à la base de données: {str(e)}")
+        finally:
+            if conn:
+                conn.close()
+
+    def remove_from_cart(self, row):
+        """Remove an item from the cart"""
+        reply = QMessageBox.question(
+            self, 'Confirmation',
+            'Voulez-vous retirer cet article du panier ?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self.cart_table.removeRow(row)
+            self.update_total()
+            if row == getattr(self, 'selected_row', None):
+                self.selected_product = None
+
+    def update_total(self):
+        """Update the total amount in the cart"""
+        total = 0.0
+        for row in range(self.cart_table.rowCount()):
+            try:
+                qty = float(self.cart_table.item(row, 1).text())
+                price = float(self.cart_table.item(row, 2).text())
+                total += qty * price
+            except (ValueError, AttributeError):
+                continue
+        
+        self.total_amount.setText(f"{total:.2f} MAD")
+        self.current_amount = total
+
+    def clear_cart(self):
+        """Clear all items from the cart"""
+        self.cart_table.setRowCount(0)
+        self.update_total()
+        self.selected_product = None
+        self.selected_row = None
+
     def setup_categories(self):
-        # Clear existing categories
-        while self.categories_layout.count():
-            item = self.categories_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        # Add "Tous" button
-        tous_btn = QPushButton("Tous")
-        tous_btn.setCursor(Qt.PointingHandCursor)
-        tous_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #28a745;
-                color: white;
-                border: none;
-                padding: 10px;
-                border-radius: 5px;
-                min-width: 150px;
-                min-height: 35px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #218838;
-            }
-        """)
-        tous_btn.clicked.connect(lambda: self.filter_by_category(None))
-        self.categories_layout.addWidget(tous_btn, 0, 0)
-
-        # Get categories from database
+        """Load categories into the UI"""
         categories = Category.get_all_categories()
         
-        # Add category buttons
+        # Add special "All" category
+        categories.insert(0, (None, "Tous les produits", None))
+        
+        # Clear existing widgets
+        for i in reversed(range(self.categories_layout.count())):
+            self.categories_layout.itemAt(i).widget().deleteLater()
+        
+        # Add categories to grid
         row = 0
-        col = 1
+        col = 0
         for category in categories:
-            if col > 5:  # 6 buttons per row
-                row += 1
+            if col > 3:  # 4 categories per row
                 col = 0
+                row += 1
             
             btn = QPushButton(category[1])
             btn.setCursor(Qt.PointingHandCursor)
@@ -594,9 +597,35 @@ class SalesManagementWindow(QWidget):
         self.load_products(category_id)
 
     def add_to_cart(self, product):
+        # Check if product has variants
+        if product.get('has_variants'):
+            try:
+                # Import the variant selection dialog
+                from .variant_selection_dialog import VariantSelectionDialog
+                
+                # Create and show the dialog
+                dialog = VariantSelectionDialog(product, self)
+                if dialog.exec_():
+                    # Get the selected variant
+                    variant = dialog.get_selected_variant()
+                    if variant:
+                        # Add the variant to the cart
+                        self.add_variant_to_cart(product, variant)
+                    else:
+                        QMessageBox.warning(self, "Erreur", "Aucune variante sélectionnée.")
+            except Exception as e:
+                print(f"Error selecting variant: {e}")
+                QMessageBox.warning(self, "Erreur", f"Erreur lors de la sélection de la variante: {str(e)}")
+            return
+        
+        # Regular product (no variants)
         # Check if product is already in cart
         for row in range(self.cart_table.rowCount()):
-            if self.cart_table.item(row, 0).text() == product['name']:
+            product_id = self.cart_table.item(row, 0).data(Qt.UserRole)
+            variant_id = self.cart_table.item(row, 0).data(Qt.UserRole + 1)
+            
+            # Match if same product and no variant
+            if product_id == product['id'] and variant_id is None:
                 # Update quantity
                 current_qty = int(self.cart_table.item(row, 1).text())
                 self.cart_table.setItem(row, 1, QTableWidgetItem(str(current_qty + 1)))
@@ -607,7 +636,13 @@ class SalesManagementWindow(QWidget):
         row = self.cart_table.rowCount()
         self.cart_table.insertRow(row)
         
-        self.cart_table.setItem(row, 0, QTableWidgetItem(product['name']))
+        # Product name cell with product ID stored
+        name_item = QTableWidgetItem(product['name'])
+        name_item.setData(Qt.UserRole, product['id'])  # Store product ID
+        name_item.setData(Qt.UserRole + 1, None)      # No variant
+        self.cart_table.setItem(row, 0, name_item)
+        
+        # Quantity and price
         self.cart_table.setItem(row, 1, QTableWidgetItem("1"))
         self.cart_table.setItem(row, 2, QTableWidgetItem(f"{product['unit_price']:.2f}"))
         
@@ -623,3 +658,86 @@ class SalesManagementWindow(QWidget):
             }
         """)
         delete_btn.clicked.connect(lambda checked, r=row: self.remove_from_cart(r))
+        
+        btn_cell = QWidget()
+        btn_layout = QHBoxLayout(btn_cell)
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.addWidget(delete_btn)
+        
+        self.cart_table.setCellWidget(row, 3, btn_cell)
+        self.update_total()
+
+    def add_variant_to_cart(self, product, variant):
+        """Add a product variant to the cart"""
+        try:
+            # Check if the variant is already in the cart
+            for row in range(self.cart_table.rowCount()):
+                product_id = self.cart_table.item(row, 0).data(Qt.UserRole)
+                variant_id = self.cart_table.item(row, 0).data(Qt.UserRole + 1)
+                
+                # Match if same product and same variant
+                if product_id == product['id'] and variant_id == variant['id']:
+                    # Update quantity
+                    current_qty = int(self.cart_table.item(row, 1).text())
+                    self.cart_table.setItem(row, 1, QTableWidgetItem(str(current_qty + 1)))
+                    self.update_total()
+                    return
+            
+            # Create variant name from product name + variant attributes
+            attr_values = {}
+            if variant.get('attribute_values'):
+                if isinstance(variant['attribute_values'], str):
+                    attr_values = json.loads(variant['attribute_values'])
+                else:
+                    attr_values = variant['attribute_values']
+            
+            variant_desc = ""
+            if attr_values:
+                variant_desc = " (" + " / ".join(attr_values.values()) + ")"
+            
+            variant_name = product['name'] + variant_desc
+            
+            # Calculate price - base price + adjustment
+            base_price = float(product['unit_price'])
+            price_adj = float(variant.get('price_adjustment', 0))
+            final_price = base_price + price_adj
+            
+            # Add to cart
+            row = self.cart_table.rowCount()
+            self.cart_table.insertRow(row)
+            
+            # Product name cell with product and variant IDs stored
+            name_item = QTableWidgetItem(variant_name)
+            name_item.setData(Qt.UserRole, product['id'])   # Store product ID
+            name_item.setData(Qt.UserRole + 1, variant['id'])  # Store variant ID
+            self.cart_table.setItem(row, 0, name_item)
+            
+            # Quantity and price
+            self.cart_table.setItem(row, 1, QTableWidgetItem("1"))
+            self.cart_table.setItem(row, 2, QTableWidgetItem(f"{final_price:.2f}"))
+            
+            # Delete button
+            delete_btn = QPushButton("🗑")
+            delete_btn.setCursor(Qt.PointingHandCursor)
+            delete_btn.setStyleSheet("""
+                QPushButton {
+                    border: none;
+                    color: #6c757d;
+                }
+                QPushButton:hover {
+                    color: #dc3545;
+                }
+            """)
+            delete_btn.clicked.connect(lambda checked, r=row: self.remove_from_cart(r))
+            
+            btn_cell = QWidget()
+            btn_layout = QHBoxLayout(btn_cell)
+            btn_layout.setContentsMargins(0, 0, 0, 0)
+            btn_layout.addWidget(delete_btn)
+            
+            self.cart_table.setCellWidget(row, 3, btn_cell)
+            self.update_total()
+            
+        except Exception as e:
+            print(f"Error adding variant to cart: {e}")
+            QMessageBox.warning(self, "Erreur", f"Erreur lors de l'ajout de la variante au panier: {str(e)}")
