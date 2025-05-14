@@ -80,6 +80,22 @@ def initialize_database():
         FOREIGN KEY (category_id) REFERENCES Categories(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS ProductAttributes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE TABLE IF NOT EXISTS ProductAttributeValues (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        attribute_id INTEGER NOT NULL,
+        value TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (attribute_id) REFERENCES ProductAttributes(id) ON DELETE CASCADE,
+        UNIQUE(attribute_id, value)
+    );
+    
     CREATE TABLE IF NOT EXISTS ProductVariants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         product_id INTEGER NOT NULL,
@@ -89,7 +105,10 @@ def initialize_database():
         purchase_price REAL,
         stock INTEGER DEFAULT 0,
         attributes TEXT,
+        sku TEXT,
+        image_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (product_id) REFERENCES Products(id) ON DELETE CASCADE
     );
 

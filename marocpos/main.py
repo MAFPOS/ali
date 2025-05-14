@@ -17,7 +17,7 @@ def init_admin_user():
         default_admin = User(
             username="MAFPOS",
             password="admin123",
-            role="Admin",
+            role="admin",  # Use lowercase to match database constraint
             active=1
         )
         if User.add_user(default_admin):

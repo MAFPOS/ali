@@ -62,6 +62,20 @@ class Product:
                     )
                 """)
                 
+                # Check if columns exist, add them if they don't
+                cursor.execute("PRAGMA table_info(Products)")
+                columns = {row[1] for row in cursor.fetchall()}
+                
+                # Add has_variants column if it doesn't exist
+                if 'has_variants' not in columns:
+                    print("Adding 'has_variants' column to Products table...")
+                    cursor.execute("ALTER TABLE Products ADD COLUMN has_variants BOOLEAN DEFAULT 0")
+                
+                # Add variant_attributes column if it doesn't exist
+                if 'variant_attributes' not in columns:
+                    print("Adding 'variant_attributes' column to Products table...")
+                    cursor.execute("ALTER TABLE Products ADD COLUMN variant_attributes TEXT")
+                
                 conn.commit()
             finally:
                 conn.close()
@@ -72,7 +86,13 @@ class Product:
         if conn:
             try:
                 cursor = conn.cursor()
-                cursor.execute("""
+                
+                # First check if the variant columns exist
+                cursor.execute("PRAGMA table_info(Products)")
+                columns = {row[1] for row in cursor.fetchall()}
+                
+                # Build query based on available columns
+                query = """
                     SELECT 
                         p.id, 
                         p.name, 
@@ -92,16 +112,33 @@ class Product:
                         COALESCE(p.status, 'available') as status,
                         COALESCE(p.product_type, 'stockable') as product_type,
                         COALESCE(p.valuation_method, 'FIFO') as valuation_method,
-                        p.has_variants,
-                        p.variant_attributes,
+                """
+                
+                # Add variant columns if they exist
+                if 'has_variants' in columns:
+                    query += "p.has_variants,"
+                else:
+                    query += "0 as has_variants,"
+                    
+                if 'variant_attributes' in columns:
+                    query += "p.variant_attributes,"
+                else:
+                    query += "NULL as variant_attributes,"
+                
+                query += """
                         COALESCE(c.name, 'Non catégorisé') as category_name,
                         p.created_at,
                         p.updated_at
                     FROM Products p
                     LEFT JOIN Categories c ON p.category_id = c.id
                     ORDER BY p.id DESC
-                """)
+                """
+                
+                cursor.execute(query)
                 return cursor.fetchall()
+            except Exception as e:
+                print(f"Error in get_all_products: {e}")
+                return []
             finally:
                 conn.close()
         return []
@@ -112,59 +149,59 @@ class Product:
         if conn:
             try:
                 cursor = conn.cursor()
-                if category_id is None:
-                    cursor.execute("""
-                        SELECT 
-                            p.id, 
-                            p.name, 
-                            p.barcode,
-                            COALESCE(p.unit_price, 0) as unit_price, 
-                            COALESCE(p.stock, 0) as stock,
-                            p.image_path,
-                            p.category_id,
-                            p.has_variants,
-                            p.variant_attributes,
-                            COALESCE(c.name, 'Non catégorisé') as category_name,
-                            p.description,
-                            COALESCE(p.purchase_price, 0) as purchase_price,
-                            COALESCE(p.min_stock, 0) as min_stock,
-                            p.unit,
-                            p.weight,
-                            p.volume,
-                            COALESCE(p.status, 'available') as status,
-                            COALESCE(p.product_type, 'stockable') as product_type,
-                            COALESCE(p.valuation_method, 'FIFO') as valuation_method
-                        FROM Products p
-                        LEFT JOIN Categories c ON p.category_id = c.id
-                        ORDER BY p.name
-                    """)
+                
+                # Check if variant columns exist
+                cursor.execute("PRAGMA table_info(Products)")
+                columns = {row[1] for row in cursor.fetchall()}
+                
+                # Build the base query
+                query = """
+                    SELECT 
+                        p.id, 
+                        p.name, 
+                        p.barcode,
+                        COALESCE(p.unit_price, 0) as unit_price, 
+                        COALESCE(p.stock, 0) as stock,
+                        p.image_path,
+                        p.category_id,
+                """
+                
+                # Add variant columns if they exist
+                if 'has_variants' in columns:
+                    query += "p.has_variants,"
                 else:
-                    cursor.execute("""
-                        SELECT 
-                            p.id, 
-                            p.name, 
-                            p.barcode,
-                            COALESCE(p.unit_price, 0) as unit_price, 
-                            COALESCE(p.stock, 0) as stock,
-                            p.image_path,
-                            p.category_id,
-                            p.has_variants,
-                            p.variant_attributes,
-                            COALESCE(c.name, 'Non catégorisé') as category_name,
-                            p.description,
-                            COALESCE(p.purchase_price, 0) as purchase_price,
-                            COALESCE(p.min_stock, 0) as min_stock,
-                            p.unit,
-                            p.weight,
-                            p.volume,
-                            COALESCE(p.status, 'available') as status,
-                            COALESCE(p.product_type, 'stockable') as product_type,
-                            COALESCE(p.valuation_method, 'FIFO') as valuation_method
-                        FROM Products p
-                        LEFT JOIN Categories c ON p.category_id = c.id
-                        WHERE p.category_id = ?
-                        ORDER BY p.name
-                    """, (category_id,))
+                    query += "0 as has_variants,"
+                    
+                if 'variant_attributes' in columns:
+                    query += "p.variant_attributes,"
+                else:
+                    query += "NULL as variant_attributes,"
+                
+                query += """
+                        COALESCE(c.name, 'Non catégorisé') as category_name,
+                        p.description,
+                        COALESCE(p.purchase_price, 0) as purchase_price,
+                        COALESCE(p.min_stock, 0) as min_stock,
+                        p.unit,
+                        p.weight,
+                        p.volume,
+                        COALESCE(p.status, 'available') as status,
+                        COALESCE(p.product_type, 'stockable') as product_type,
+                        COALESCE(p.valuation_method, 'FIFO') as valuation_method
+                    FROM Products p
+                    LEFT JOIN Categories c ON p.category_id = c.id
+                """
+                
+                # Add category filter if provided
+                if category_id is not None:
+                    query += " WHERE p.category_id = ? "
+                    params = (category_id,)
+                else:
+                    params = ()
+                
+                query += " ORDER BY p.name"
+                
+                cursor.execute(query, params)
 
                 products = cursor.fetchall()
                 
@@ -279,11 +316,12 @@ class Product:
         return False
 
     @staticmethod
-    def add_product(name, unit_price=0, purchase_price=0, stock=0, category_id=None, has_variants=False, variant_attributes=None, **kwargs):
+    def add_product(name, unit_price=0, purchase_price=0, stock=0, category_id=None, has_variants=False, variant_attributes=None, variants=None, **kwargs):
         conn = get_connection()
         if conn:
             try:
                 cursor = conn.cursor()
+                cursor.execute("BEGIN TRANSACTION")
                 
                 # Prepare fields and values
                 fields = ['name', 'unit_price', 'purchase_price', 'stock', 'category_id', 'has_variants']
@@ -344,9 +382,38 @@ class Product:
                         kwargs.get('minimum_order')
                     ))
                 
-                conn.commit()
+                # Add variants if provided
+                if has_variants and variants:
+                    for variant in variants:
+                        # Calculate variant price
+                        variant_price = variant.get('price', unit_price)
+                        
+                        # Prepare variant insert query
+                        cursor.execute("""
+                            INSERT INTO ProductVariants (
+                                product_id, name, barcode, unit_price, 
+                                purchase_price, stock, attributes, sku,
+                                created_at, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            product_id,
+                            variant.get('name', ''),
+                            variant.get('barcode', ''),
+                            variant_price,
+                            variant.get('purchase_price', purchase_price),
+                            variant.get('stock', 0),
+                            variant.get('attribute_values', '{}'),
+                            variant.get('sku', ''),
+                            current_time,
+                            current_time
+                        ))
+                
+                # Commit transaction
+                cursor.execute("COMMIT")
                 return product_id
+                
             except Exception as e:
+                cursor.execute("ROLLBACK")
                 print(f"Error adding product: {e}")
                 return None
             finally:

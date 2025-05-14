@@ -105,10 +105,14 @@ class AddProductDialog(QDialog):
         self.variant_attributes = []
         predefined_attributes = ["Taille", "Couleur", "Matériau", "Style"]
         
+        # Attribute checkbox group
+        attr_group = QGroupBox("Attributs disponibles")
+        attr_layout = QVBoxLayout()
+        
         for attr in predefined_attributes:
             cb = QCheckBox(attr)
             self.variant_attributes.append((attr, cb))
-            variant_frame_layout.addWidget(cb)
+            attr_layout.addWidget(cb)
         
         # Custom attribute
         custom_attr_layout = QHBoxLayout()
@@ -118,7 +122,45 @@ class AddProductDialog(QDialog):
         add_attr_btn.clicked.connect(self.add_custom_attribute)
         custom_attr_layout.addWidget(self.custom_attr_input)
         custom_attr_layout.addWidget(add_attr_btn)
-        variant_frame_layout.addLayout(custom_attr_layout)
+        attr_layout.addLayout(custom_attr_layout)
+        
+        # Manage attributes button
+        manage_attr_btn = QPushButton("Gérer tous les attributs")
+        manage_attr_btn.clicked.connect(self.manage_attributes)
+        attr_layout.addWidget(manage_attr_btn)
+        
+        attr_group.setLayout(attr_layout)
+        variant_frame_layout.addWidget(attr_group)
+        
+        # Variant management section
+        variant_mgmt_layout = QHBoxLayout()
+        
+        # Button to open variant management
+        manage_variants_btn = QPushButton("Gérer les variantes")
+        manage_variants_btn.clicked.connect(self.manage_variants)
+        manage_variants_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                padding: 8px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        variant_mgmt_layout.addWidget(manage_variants_btn)
+        
+        # Variant count label
+        self.variant_count_label = QLabel("Aucune variante configurée")
+        self.variant_count_label.setStyleSheet("color: #666;")
+        variant_mgmt_layout.addWidget(self.variant_count_label)
+        
+        variant_frame_layout.addLayout(variant_mgmt_layout)
+        
+        # Initialize variants data
+        self.variants_data = []
         
         self.variant_frame.setLayout(variant_frame_layout)
         self.variant_frame.setEnabled(False)
@@ -175,6 +217,41 @@ class AddProductDialog(QDialog):
 
     def toggle_variant_options(self, state):
         self.variant_frame.setEnabled(state == Qt.Checked)
+        
+    def manage_variants(self):
+        """Open the variant management dialog"""
+        from .variant_management_dialog import VariantManagementDialog
+
+        # Collect selected attributes
+        selected_attrs = [
+            attr for attr, cb in self.variant_attributes 
+            if cb.isChecked()
+        ]
+        
+        # Show the variant management dialog
+        dialog = VariantManagementDialog(
+            product_id=self.product['id'] if self.product else None,
+            parent=self,
+            variant_attributes=selected_attrs
+        )
+        
+        if dialog.exec_():
+            # Get the variant data
+            self.variants_data = dialog.get_variants_data()
+            # Update attribute list
+            attr_names = dialog.get_attribute_names()
+            
+            # Update variant count label
+            if self.variants_data:
+                self.variant_count_label.setText(f"{len(self.variants_data)} variantes configurées")
+                self.variant_count_label.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                self.variant_count_label.setText("Aucune variante configurée")
+                self.variant_count_label.setStyleSheet("color: #666;")
+                
+            # Update the selected attributes in the UI
+            for attr, cb in self.variant_attributes:
+                cb.setChecked(attr in attr_names)
 
     def add_custom_attribute(self):
         attr_name = self.custom_attr_input.text().strip()
@@ -194,13 +271,20 @@ class AddProductDialog(QDialog):
 
     # ... (rest of the methods remain the same)
 
+    def manage_attributes(self):
+        """Open the attribute management dialog"""
+        from .attribute_management_dialog import AttributeManagementDialog
+        dialog = AttributeManagementDialog(self)
+        dialog.exec_()
+        # We could refresh our attribute list here if needed
+
     def get_product_data(self):
         selected_attrs = [
             attr for attr, cb in self.variant_attributes 
             if cb.isChecked()
         ]
         
-        return {
+        data = {
             'barcode': self.barcode_input.text(),
             'name': self.name_input.text().strip(),
             'description': self.description_input.toPlainText(),
@@ -213,3 +297,9 @@ class AddProductDialog(QDialog):
             'has_variants': self.has_variants.isChecked(),
             'variant_attributes': json.dumps(selected_attrs) if selected_attrs else None
         }
+        
+        # Add variants data if we have it
+        if hasattr(self, 'variants_data') and self.variants_data and self.has_variants.isChecked():
+            data['variants'] = self.variants_data
+            
+        return data
