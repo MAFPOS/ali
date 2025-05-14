@@ -127,13 +127,17 @@ class VariantSelectionDialog(QDialog):
             
         for variant in variants:
             try:
-                # Parse attribute values
+                # Parse attribute values safely
                 attr_values = {}
-                if variant['attribute_values']:
-                    if isinstance(variant['attribute_values'], str):
-                        attr_values = json.loads(variant['attribute_values'])
-                    else:
-                        attr_values = variant['attribute_values']
+                if variant.get('attribute_values'):
+                    try:
+                        if isinstance(variant['attribute_values'], str):
+                            attr_values = json.loads(variant['attribute_values'])
+                        else:
+                            attr_values = variant['attribute_values']
+                    except Exception as e:
+                        print(f"Error parsing attribute values: {e}")
+                        attr_values = {}
                 
                 # Create list item
                 item = QListWidgetItem()
@@ -148,7 +152,12 @@ class VariantSelectionDialog(QDialog):
                 # Create variant name from attributes
                 variant_name = variant.get('name', '')
                 if not variant_name and attr_values:
-                    variant_name = " / ".join(attr_values.values())
+                    # Use .get() with default empty string to avoid KeyError
+                    attr_vals = [val for val in attr_values.values() if val]
+                    if attr_vals:
+                        variant_name = " / ".join(attr_vals)
+                    else:
+                        variant_name = f"Variante #{variant.get('id', '')}"
                     
                 name_label = QLabel(variant_name)
                 name_label.setStyleSheet("font-weight: bold;")

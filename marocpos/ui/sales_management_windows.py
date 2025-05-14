@@ -392,12 +392,20 @@ class SalesManagementWindow(QWidget):
                     INSERT INTO Sales (
                         created_at, 
                         total_amount, 
-                        user_id
-                    ) VALUES (?, ?, ?)
+                        user_id,
+                        discount,
+                        tax_amount,
+                        final_total,
+                        payment_method
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
                     self.current_datetime.strftime("%Y-%m-%d %H:%M:%S"),
                     self.current_amount,
-                    self.user_id  # Use the user_id from instance
+                    self.user_id,  # Use the user_id from instance
+                    0.0,  # discount (default to 0)
+                    0.0,  # tax_amount (default to 0)
+                    self.current_amount,  # final_total (same as total_amount without discounts/taxes)
+                    "CASH"  # payment_method (default to CASH)
                 ))
                 
                 sale_id = cursor.lastrowid
