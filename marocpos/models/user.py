@@ -3,10 +3,11 @@ import bcrypt
 from datetime import datetime, UTC
 
 class User:
-    def __init__(self, username, password, role="Cashier", active=1):
+    def __init__(self, username, password, role="cashier", active=1):
         self.username = username
         self.password = self._hash_password(password) if password else None
-        self.role = role
+        # Ensure role is always lowercase to match database constraint
+        self.role = role.lower() if role else "cashier"
         self.active = active
 
     def _hash_password(self, password):
