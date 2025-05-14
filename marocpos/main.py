@@ -50,6 +50,13 @@ def main():
 
     # Initialize admin user
     init_admin_user()
+    
+    # Patch missing window classes to fix module issues
+    try:
+        from ui.missing_class_patcher import patch_all_modules
+        patch_all_modules()
+    except Exception as e:
+        print(f"⚠️ Error patching window classes: {e}")
 
     # Create images directory if it doesn't exist
     images_dir = os.path.join(os.path.dirname(__file__), 'images')
