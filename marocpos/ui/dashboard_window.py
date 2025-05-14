@@ -247,9 +247,39 @@ class DashboardWindow(QMainWindow):
         module_name = f"ui.{window_class_name}"
         try:
             module = __import__(module_name, fromlist=[''])
-            # Get the class from the module - usually has same name as file without _
-            class_name = window_class_name.replace('_windows', '_window').replace('_window', 'Window')
-            window_class = getattr(module, class_name)
+            
+            # Get the class from the module by converting snake_case to CamelCase
+            # Example: product_management_window -> ProductManagementWindow
+            words = window_class_name.split('_')
+            class_name = ''.join(word.capitalize() for word in words)
+            
+            # If the filename ends with 's' (windows), make sure class doesn't
+            if class_name.endswith('Windows') and window_class_name.endswith('windows'):
+                class_name = class_name[:-1]  # Remove the 's' to get singular form
+                
+            # Try to get the class from the module
+            if hasattr(module, class_name):
+                window_class = getattr(module, class_name)
+            else:
+                # Try alternative naming conventions
+                alt_class_names = [
+                    class_name,                          # ProductManagementWindow
+                    class_name.replace('Windows', 'Window'), # SalesManagementWindow
+                    window_class_name.title().replace('_', ''), # ProductManagementWindow
+                    window_class_name.replace('_windows', 'Windows').replace('_window', 'Window'), # StoreManagementWindow
+                ]
+                
+                for alt_name in alt_class_names:
+                    if hasattr(module, alt_name):
+                        window_class = getattr(module, alt_name)
+                        break
+                else:
+                    # If we get here, none of the alternatives worked
+                    print(f"Could not find a window class in {module_name}. Available classes:")
+                    for item in dir(module):
+                        if not item.startswith('__'):
+                            print(f"  - {item}")
+                    raise AttributeError(f"Could not find window class in module")
             
             # Create a new window
             new_window = window_class()
@@ -260,23 +290,70 @@ class DashboardWindow(QMainWindow):
 
     def open_sales_window(self):
         """Open the Sales window."""
-        self.open_window('sales_management_windows', 'sales')
+        try:
+            self._directly_open_window('ui.sales_management_windows', 'SalesManagementWindow', 'sales')
+        except Exception as e:
+            print(f"Error opening sales window: {e}")
 
     def open_product_management(self):
         """Open the Product Management window."""
-        self.open_window('product_management_window', 'product')
+        try:
+            self._directly_open_window('ui.product_management_window', 'ProductManagementWindow', 'product')
+        except Exception as e:
+            print(f"Error opening product window: {e}")
 
     def open_category_management(self):
         """Open the Category Management window."""
-        self.open_window('category_management_window', 'category')
+        try:
+            self._directly_open_window('ui.category_management_window', 'CategoryManagementWindow', 'category')
+        except Exception as e:
+            print(f"Error opening category window: {e}")
 
     def open_store_management(self):
         """Open the Store Management window."""
-        self.open_window('store_management_windows', 'store')
+        try:
+            self._directly_open_window('ui.store_management_windows', 'StoreManagementWindow', 'store')
+        except Exception as e:
+            print(f"Error opening store window: {e}")
 
     def open_user_management(self):
         """Open the User Management window."""
-        self.open_window('user_management_window', 'user')
+        try:
+            self._directly_open_window('ui.user_management_window', 'UserManagementWindow', 'user')
+        except Exception as e:
+            print(f"Error opening user window: {e}")
+            
+    def _directly_open_window(self, module_name, class_name, window_key):
+        """Open a window by directly specifying module and class name."""
+        # Check if window is already open
+        if window_key in self.open_windows and self.open_windows[window_key].isVisible():
+            # Window already exists, just activate it
+            self.open_windows[window_key].activateWindow()
+            self.open_windows[window_key].raise_()
+            return
+            
+        try:
+            # Import the module
+            module = __import__(module_name, fromlist=[class_name])
+            
+            # Print available classes in module for debugging
+            if not hasattr(module, class_name):
+                print(f"Available classes in {module_name}:")
+                for item in dir(module):
+                    if not item.startswith('__'):
+                        print(f"  - {item}")
+                raise AttributeError(f"Module {module_name} has no attribute {class_name}")
+                
+            # Get the window class
+            window_class = getattr(module, class_name)
+            
+            # Create a new window
+            new_window = window_class()
+            self.open_windows[window_key] = new_window
+            new_window.show()
+        except Exception as e:
+            print(f"Error in _directly_open_window: {e}")
+            raise
         
     def closeEvent(self, event):
         """Close all child windows when main window is closed."""

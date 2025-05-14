@@ -1,302 +1,198 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, 
     QPushButton, QLabel, QLineEdit, QComboBox, QMessageBox, QDialog,
-    QFormLayout, QDialogButtonBox
+    QFormLayout, QDialogButtonBox, QHeaderView
 )
 from PyQt5.QtCore import Qt
 from models.user import User
-
-class AddEditUserDialog(QDialog):
-    def __init__(self, parent=None, user=None):
-        super().__init__(parent)
-        self.user = user
-        self.init_ui()
-
-    def init_ui(self):
-        self.setWindowTitle("Add User" if not self.user else "Edit User")
-        layout = QFormLayout()
-
-        # Username field
-        self.username_input = QLineEdit()
-        if self.user:
-            self.username_input.setText(self.user['username'])
-        layout.addRow("Username:", self.username_input)
-
-        # Password field (only for new users)
-        if not self.user:
-            self.password_input = QLineEdit()
-            self.password_input.setEchoMode(QLineEdit.Password)
-            layout.addRow("Password:", self.password_input)
-
-        # Role selection
-        self.role_combo = QComboBox()
-        self.role_combo.addItems(["Admin", "Cashier", "Manager"])
-        if self.user:
-            self.role_combo.setCurrentText(self.user['role'])
-        layout.addRow("Role:", self.role_combo)
-
-        # Active status
-        self.active_combo = QComboBox()
-        self.active_combo.addItems(["Yes", "No"])
-        if self.user:
-            self.active_combo.setCurrentText("Yes" if self.user['active'] else "No")
-        layout.addRow("Active:", self.active_combo)
-
-        # Buttons
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
-            Qt.Horizontal, self
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addRow(buttons)
-
-        self.setLayout(layout)
-
-    def get_data(self):
-        return {
-            'username': self.username_input.text(),
-            'password': getattr(self, 'password_input', None) and self.password_input.text(),
-            'role': self.role_combo.currentText(),
-            'active': 1 if self.active_combo.currentText() == "Yes" else 0
-        }
 
 class UserManagementWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
-
+        
     def init_ui(self):
-        # Set window properties
-        self.setWindowTitle("User Management - MarocPOS")
-        self.setGeometry(100, 100, 900, 600)
-
+        self.setWindowTitle("Gestion des utilisateurs")
+        self.setGeometry(100, 100, 800, 600)
+        
         # Main layout
         layout = QVBoxLayout()
-
-        # Header with title and add button
+        
+        # Header with search and add button
         header_layout = QHBoxLayout()
-        title = QLabel("User Management")
-        title.setStyleSheet("""
-            QLabel {
-                font-size: 24px;
-                font-weight: bold;
-                color: #2c3e50;
-            }
-        """)
-        add_user_button = QPushButton("Add New User")
-        add_user_button.setStyleSheet("""
-            QPushButton {
-                background-color: #2ecc71;
-                color: white;
-                padding: 8px 15px;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #27ae60;
-            }
-        """)
-        header_layout.addWidget(title)
-        header_layout.addStretch()
-        header_layout.addWidget(add_user_button)
-        layout.addLayout(header_layout)
-
+        
+        title_label = QLabel("Liste des utilisateurs")
+        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        header_layout.addWidget(title_label)
+        
         # Search box
         search_layout = QHBoxLayout()
+        search_label = QLabel("Rechercher:")
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search users...")
+        self.search_input.setPlaceholderText("Nom d'utilisateur ou rôle...")
         self.search_input.textChanged.connect(self.filter_users)
+        search_layout.addWidget(search_label)
         search_layout.addWidget(self.search_input)
-        layout.addLayout(search_layout)
-
-        # Table
+        
+        header_layout.addLayout(search_layout)
+        header_layout.addStretch()
+        
+        # Add user button
+        add_user_btn = QPushButton("Ajouter un utilisateur")
+        add_user_btn.clicked.connect(self.add_user)
+        header_layout.addWidget(add_user_btn)
+        
+        layout.addLayout(header_layout)
+        
+        # Users table
         self.user_table = QTableWidget()
-        self.user_table.setColumnCount(6)
-        self.user_table.setHorizontalHeaderLabels([
-            "ID", "Username", "Role", "Active", "Last Login", "Actions"
-        ])
-        self.user_table.horizontalHeader().setStretchLastSection(True)
-        self.user_table.setStyleSheet("""
-            QTableWidget {
-                border: 1px solid #dcdde1;
-                border-radius: 4px;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QHeaderView::section {
-                background-color: #f5f6fa;
-                padding: 5px;
-                border: none;
-                font-weight: bold;
-            }
-        """)
+        self.user_table.setColumnCount(5)
+        self.user_table.setHorizontalHeaderLabels(["ID", "Nom d'utilisateur", "Rôle", "Statut", "Actions"])
+        
+        # Set column widths
+        self.user_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+        self.user_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.user_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.user_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+        self.user_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
+        
+        self.user_table.setColumnWidth(0, 50)    # ID
+        self.user_table.setColumnWidth(2, 100)   # Role
+        self.user_table.setColumnWidth(3, 80)    # Status
+        self.user_table.setColumnWidth(4, 150)   # Actions
+        
         layout.addWidget(self.user_table)
-
-        # Connect buttons
-        add_user_button.clicked.connect(self.add_user)
-
+        
         self.setLayout(layout)
+        
+        # Load users
         self.load_users()
-
+    
     def load_users(self):
+        """Load users into the table"""
         users = User.get_all_users()
         self.user_table.setRowCount(len(users))
-
+        
         for row, user in enumerate(users):
+            # Convert to dictionary if not already
+            if not isinstance(user, dict):
+                user_dict = {
+                    'id': user[0],
+                    'username': user[1],
+                    'role': user[2],
+                    'active': user[3]
+                }
+            else:
+                user_dict = user
+            
             # ID
-            id_item = QTableWidgetItem(str(user['id']))
-            id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
+            id_item = QTableWidgetItem(str(user_dict['id']))
+            id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)  # Make read-only
             self.user_table.setItem(row, 0, id_item)
-
+            
             # Username
-            self.user_table.setItem(row, 1, QTableWidgetItem(user['username']))
-
+            username_item = QTableWidgetItem(user_dict['username'])
+            username_item.setFlags(username_item.flags() & ~Qt.ItemIsEditable)
+            self.user_table.setItem(row, 1, username_item)
+            
             # Role
-            self.user_table.setItem(row, 2, QTableWidgetItem(user['role']))
-
-            # Active status
-            self.user_table.setItem(row, 3, QTableWidgetItem("Yes" if user['active'] else "No"))
-
-            # Last login (placeholder)
-            self.user_table.setItem(row, 4, QTableWidgetItem("-"))
-
+            role_item = QTableWidgetItem(user_dict['role'].capitalize())
+            role_item.setFlags(role_item.flags() & ~Qt.ItemIsEditable)
+            self.user_table.setItem(row, 2, role_item)
+            
+            # Status
+            status = "Actif" if user_dict['active'] else "Inactif"
+            status_item = QTableWidgetItem(status)
+            status_item.setFlags(status_item.flags() & ~Qt.ItemIsEditable)
+            self.user_table.setItem(row, 3, status_item)
+            
             # Actions
             actions_widget = QWidget()
             actions_layout = QHBoxLayout(actions_widget)
-            actions_layout.setContentsMargins(4, 4, 4, 4)
-
+            actions_layout.setContentsMargins(0, 0, 0, 0)
+            
             # Edit button
             edit_btn = QPushButton("✏️")
-            edit_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    border: none;
-                    padding: 5px;
-                    border-radius: 3px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                }
-            """)
-            edit_btn.clicked.connect(lambda checked, u=user: self.edit_user(u))
-
+            edit_btn.setMaximumWidth(30)
+            edit_btn.clicked.connect(lambda checked, u=user_dict: self.edit_user(u))
+            
             # Delete button
             delete_btn = QPushButton("🗑️")
-            delete_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #e74c3c;
-                    color: white;
-                    border: none;
-                    padding: 5px;
-                    border-radius: 3px;
-                }
-                QPushButton:hover {
-                    background-color: #c0392b;
-                }
-            """)
-            delete_btn.clicked.connect(lambda checked, id=user['id']: self.delete_user(id))
-
+            delete_btn.setMaximumWidth(30)
+            delete_btn.clicked.connect(lambda checked, u=user_dict: self.delete_user(u))
+            
             # Reset password button
-            reset_btn = QPushButton("🔑")
-            reset_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #f1c40f;
-                    color: white;
-                    border: none;
-                    padding: 5px;
-                    border-radius: 3px;
-                }
-                QPushButton:hover {
-                    background-color: #f39c12;
-                }
-            """)
-            reset_btn.clicked.connect(lambda checked, id=user['id']: self.reset_password(id))
-
+            reset_pwd_btn = QPushButton("🔑")
+            reset_pwd_btn.setMaximumWidth(30)
+            reset_pwd_btn.setToolTip("Réinitialiser le mot de passe")
+            reset_pwd_btn.clicked.connect(lambda checked, u=user_dict: self.reset_password(u))
+            
             actions_layout.addWidget(edit_btn)
-            actions_layout.addWidget(reset_btn)
             actions_layout.addWidget(delete_btn)
-            actions_layout.addStretch()
-
-            self.user_table.setCellWidget(row, 5, actions_widget)
-
-        self.user_table.resizeColumnsToContents()
-
+            actions_layout.addWidget(reset_pwd_btn)
+            
+            self.user_table.setCellWidget(row, 4, actions_widget)
+    
     def add_user(self):
+        """Open dialog to add a new user"""
         dialog = AddEditUserDialog(self)
         if dialog.exec_() == QDialog.Accepted:
-            data = dialog.get_data()
-            user = User(
-                username=data['username'],
-                password=data['password'],
-                role=data['role'],
-                active=data['active']
-            )
-            if User.add_user(user):
-                QMessageBox.information(self, "Success", "User added successfully!")
+            user_data = dialog.get_data()
+            if User.add_user(User(**user_data)):
                 self.load_users()
+                QMessageBox.information(self, "Succès", "Utilisateur ajouté avec succès!")
             else:
-                QMessageBox.warning(self, "Error", "Failed to add user!")
-
+                QMessageBox.warning(self, "Erreur", "Erreur lors de l'ajout de l'utilisateur.")
+    
     def edit_user(self, user):
+        """Open dialog to edit a user"""
         dialog = AddEditUserDialog(self, user)
         if dialog.exec_() == QDialog.Accepted:
-            data = dialog.get_data()
-            if User.update_user(user['id'], data['username'], data['role'], data['active']):
-                QMessageBox.information(self, "Success", "User updated successfully!")
+            user_data = dialog.get_data()
+            if User.update_user(user['id'], user_data):
                 self.load_users()
+                QMessageBox.information(self, "Succès", "Utilisateur modifié avec succès!")
             else:
-                QMessageBox.warning(self, "Error", "Failed to update user!")
-
-    def delete_user(self, user_id):
+                QMessageBox.warning(self, "Erreur", "Erreur lors de la modification de l'utilisateur.")
+    
+    def delete_user(self, user):
+        """Delete a user"""
         reply = QMessageBox.question(
             self, 'Confirmation',
-            "Are you sure you want to delete this user?",
+            f"Êtes-vous sûr de vouloir supprimer l'utilisateur {user['username']} ?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
+        
         if reply == QMessageBox.Yes:
-            if User.delete_user(user_id):
-                QMessageBox.information(self, "Success", "User deleted successfully!")
+            if User.delete_user(user['id']):
                 self.load_users()
+                QMessageBox.information(self, "Succès", "Utilisateur supprimé avec succès!")
             else:
-                QMessageBox.warning(self, "Error", "Failed to delete user!")
-
-    def reset_password(self, user_id):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Reset Password")
-        layout = QFormLayout()
-
-        password_input = QLineEdit()
-        password_input.setEchoMode(QLineEdit.Password)
-        confirm_input = QLineEdit()
-        confirm_input.setEchoMode(QLineEdit.Password)
-
-        layout.addRow("New Password:", password_input)
-        layout.addRow("Confirm Password:", confirm_input)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
-            Qt.Horizontal, dialog
+                QMessageBox.warning(self, "Erreur", "Erreur lors de la suppression de l'utilisateur.")
+    
+    def reset_password(self, user):
+        """Reset a user's password"""
+        reply = QMessageBox.question(
+            self, 'Confirmation',
+            f"Réinitialiser le mot de passe pour {user['username']} ?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
         )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addRow(buttons)
-
-        dialog.setLayout(layout)
-
-        if dialog.exec_() == QDialog.Accepted:
-            if password_input.text() != confirm_input.text():
-                QMessageBox.warning(self, "Error", "Passwords do not match!")
-                return
-            if User.update_password(user_id, password_input.text()):
-                QMessageBox.information(self, "Success", "Password reset successfully!")
+        
+        if reply == QMessageBox.Yes:
+            new_password = "password123"  # Default password
+            if User.reset_password(user['id'], new_password):
+                QMessageBox.information(
+                    self, 
+                    "Succès", 
+                    f"Le mot de passe a été réinitialisé à: {new_password}"
+                )
             else:
-                QMessageBox.warning(self, "Error", "Failed to reset password!")
-
+                QMessageBox.warning(self, "Erreur", "Erreur lors de la réinitialisation du mot de passe.")
+    
     def filter_users(self):
+        """Filter users by search text"""
         search_text = self.search_input.text().lower()
         for row in range(self.user_table.rowCount()):
             username = self.user_table.item(row, 1).text().lower()
@@ -305,3 +201,69 @@ class UserManagementWindow(QWidget):
                 row, 
                 search_text not in username and search_text not in role
             )
+
+class AddEditUserDialog(QDialog):
+    def __init__(self, parent=None, user=None):
+        super().__init__(parent)
+        self.user = user
+        self.init_ui()
+    
+    def init_ui(self):
+        self.setWindowTitle("Modifier utilisateur" if self.user else "Ajouter utilisateur")
+        self.setMinimumWidth(300)
+        
+        layout = QFormLayout()
+        
+        # Username
+        self.username_input = QLineEdit()
+        layout.addRow("Nom d'utilisateur:", self.username_input)
+        
+        # Password (only for new users)
+        if not self.user:
+            self.password_input = QLineEdit()
+            self.password_input.setEchoMode(QLineEdit.Password)
+            layout.addRow("Mot de passe:", self.password_input)
+        
+        # Role
+        self.role_combo = QComboBox()
+        self.role_combo.addItems(["admin", "cashier", "manager"])
+        layout.addRow("Rôle:", self.role_combo)
+        
+        # Active status
+        self.active_combo = QComboBox()
+        self.active_combo.addItems(["Actif", "Inactif"])
+        layout.addRow("Statut:", self.active_combo)
+        
+        # Fill data if editing
+        if self.user:
+            self.username_input.setText(self.user['username'])
+            
+            # Find role index
+            role_index = self.role_combo.findText(self.user['role'])
+            if role_index >= 0:
+                self.role_combo.setCurrentIndex(role_index)
+            
+            # Set active status
+            self.active_combo.setCurrentIndex(0 if self.user['active'] else 1)
+        
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+        
+        self.setLayout(layout)
+    
+    def get_data(self):
+        """Get user data from the form"""
+        data = {
+            'username': self.username_input.text(),
+            'role': self.role_combo.currentText(),
+            'active': self.active_combo.currentText() == "Actif"
+        }
+        
+        # Add password for new users
+        if hasattr(self, 'password_input'):
+            data['password'] = self.password_input.text()
+        
+        return data

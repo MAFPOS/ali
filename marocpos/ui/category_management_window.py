@@ -7,6 +7,102 @@ from PyQt5.QtGui import QFont
 from models.category import Category
 from datetime import datetime
 
+class CategoryManagementWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        
+    def init_ui(self):
+        self.setWindowTitle("Gestion des catégories")
+        self.setGeometry(100, 100, 800, 600)
+        
+        # Main layout
+        layout = QVBoxLayout()
+        
+        # Header
+        header_layout = QHBoxLayout()
+        title_label = QLabel("Liste des catégories")
+        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        add_button = QPushButton("Ajouter une catégorie")
+        add_button.clicked.connect(self.add_category)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        header_layout.addWidget(add_button)
+        layout.addLayout(header_layout)
+        
+        # Categories table
+        self.categories_table = QTableWidget()
+        self.categories_table.setColumnCount(4)
+        self.categories_table.setHorizontalHeaderLabels(["ID", "Nom", "Description", "Actions"])
+        self.categories_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.categories_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.categories_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+        self.categories_table.setColumnWidth(0, 50)
+        self.categories_table.setColumnWidth(3, 100)
+        layout.addWidget(self.categories_table)
+        
+        self.setLayout(layout)
+        
+        # Load categories
+        self.load_categories()
+    
+    def load_categories(self):
+        """Load categories into table"""
+        categories = Category.get_all_categories()
+        self.categories_table.setRowCount(len(categories))
+        
+        for row, category in enumerate(categories):
+            # ID
+            self.categories_table.setItem(row, 0, QTableWidgetItem(str(category[0])))
+            # Name
+            self.categories_table.setItem(row, 1, QTableWidgetItem(category[1]))
+            # Description
+            self.categories_table.setItem(row, 2, QTableWidgetItem(category[2] if category[2] else ""))
+            
+            # Actions
+            actions_widget = QWidget()
+            actions_layout = QHBoxLayout(actions_widget)
+            actions_layout.setContentsMargins(0, 0, 0, 0)
+            
+            edit_btn = QPushButton("✏️")
+            delete_btn = QPushButton("🗑️")
+            
+            edit_btn.clicked.connect(lambda checked, cat=category: self.edit_category(cat))
+            delete_btn.clicked.connect(lambda checked, id=category[0]: self.delete_category(id))
+            
+            actions_layout.addWidget(edit_btn)
+            actions_layout.addWidget(delete_btn)
+            
+            self.categories_table.setCellWidget(row, 3, actions_widget)
+    
+    def add_category(self):
+        """Open dialog to add a new category"""
+        dialog = AddEditCategoryDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.load_categories()
+    
+    def edit_category(self, category):
+        """Open dialog to edit a category"""
+        dialog = AddEditCategoryDialog(self, category)
+        if dialog.exec_() == QDialog.Accepted:
+            self.load_categories()
+    
+    def delete_category(self, category_id):
+        """Delete a category"""
+        reply = QMessageBox.question(
+            self, 'Confirmation',
+            "Êtes-vous sûr de vouloir supprimer cette catégorie ?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            if Category.delete_category(category_id):
+                self.load_categories()
+                QMessageBox.information(self, "Succès", "Catégorie supprimée avec succès!")
+            else:
+                QMessageBox.warning(self, "Erreur", "Échec de la suppression de la catégorie.")
+
 class AddEditCategoryDialog(QDialog):
     def __init__(self, parent=None, category=None):
         super().__init__(parent)
