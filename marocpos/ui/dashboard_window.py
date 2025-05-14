@@ -4,6 +4,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QDateTime
 from models.category import Category
+from models.user import User
+from controllers.auth_controller import AuthController
 from ui.user_management_window import UserManagementWindow
 from ui.store_management_windows import StoreManagementWindow
 from ui.sales_management_windows import SalesManagementWindow
@@ -15,6 +17,8 @@ class DashboardWindow(QMainWindow):
         super().__init__()
         self.user = user
         self.current_datetime = QDateTime.currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
+        # Track open windows to prevent duplicates and memory leaks
+        self.open_windows = {}
         self.init_ui()
 
     def init_ui(self):
@@ -101,7 +105,8 @@ class DashboardWindow(QMainWindow):
         store_label = QLabel("Boutique Casablanca")
         store_label.setStyleSheet("color: #333; font-size: 14px; font-weight: bold;")
         
-        username_label = QLabel("MAFPOS")
+        username = self.user.get('username', 'MAFPOS') if self.user else 'MAFPOS'
+        username_label = QLabel(username)
         username_label.setStyleSheet("color: #6c757d; font-size: 14px;")
         
         datetime_label = QLabel(self.current_datetime)
@@ -137,9 +142,15 @@ class DashboardWindow(QMainWindow):
         # Setup category buttons
         self.setup_category_buttons()
 
+        # Create the embedded sales management window
+        self.sales_mgmt_area = QWidget()
+        self.sales_mgmt_layout = QVBoxLayout(self.sales_mgmt_area)
+        self.sales_mgmt_layout.setContentsMargins(0, 0, 0, 0)
+        
         # Initially show sales management
         self.sales_mgmt_window = SalesManagementWindow()
-        layout.addWidget(self.sales_mgmt_window)
+        self.sales_mgmt_layout.addWidget(self.sales_mgmt_window)
+        layout.addWidget(self.sales_mgmt_area)
 
         return content
 
@@ -197,37 +208,72 @@ class DashboardWindow(QMainWindow):
             col += 1
 
     def filter_by_category(self, category_id):
-        # TODO: Implement category filtering
-        pass
+        # Pass the category filter to the sales management window
+        if hasattr(self, 'sales_mgmt_window'):
+            try:
+                # Only call if the method exists
+                if hasattr(self.sales_mgmt_window, 'filter_by_category'):
+                    self.sales_mgmt_window.filter_by_category(category_id)
+            except Exception as e:
+                print(f"Error filtering by category: {e}")
+
+    def open_window(self, window_class, window_name):
+        """Open a window and track it to prevent duplicates."""
+        # Check if window is already open
+        if window_name in self.open_windows and self.open_windows[window_name].isVisible():
+            # Window already exists, just activate it
+            self.open_windows[window_name].activateWindow()
+            self.open_windows[window_name].raise_()
+            return
+        
+        # Create a new window
+        new_window = window_class()
+        self.open_windows[window_name] = new_window
+        new_window.show()
 
     def open_sales_window(self):
         """Open the Sales window."""
-        self.sales_window = SalesManagementWindow()
-        self.sales_window.show()
+        self.open_window(SalesManagementWindow, 'sales')
 
     def open_product_management(self):
         """Open the Product Management window."""
-        self.product_mgmt_window = ProductManagementWindow()
-        self.product_mgmt_window.show()
+        self.open_window(ProductManagementWindow, 'product')
 
     def open_category_management(self):
         """Open the Category Management window."""
-        self.category_mgmt_window = CategoryManagementWindow()
-        self.category_mgmt_window.show()
+        self.open_window(CategoryManagementWindow, 'category')
 
     def open_store_management(self):
         """Open the Store Management window."""
-        self.store_mgmt_window = StoreManagementWindow()
-        self.store_mgmt_window.show()
+        self.open_window(StoreManagementWindow, 'store')
 
     def open_user_management(self):
         """Open the User Management window."""
-        self.user_mgmt_window = UserManagementWindow()
-        self.user_mgmt_window.show()
+        self.open_window(UserManagementWindow, 'user')
+        
+    def closeEvent(self, event):
+        """Close all child windows when main window is closed."""
+        for window in self.open_windows.values():
+            if window and window.isVisible():
+                window.close()
+        event.accept()
 
     def logout(self):
         """Logout the user and show login window."""
-        from ui.login_window import LoginWindow  # Import here to avoid circular import
+        # Import LoginWindow and create auth controller here to avoid circular imports
+        import importlib
+        login_module = importlib.import_module('ui.login_window')
+        LoginWindow = login_module.LoginWindow
+        
+        # First close all open windows
+        for window in self.open_windows.values():
+            if window:
+                window.close()
+        
+        # Create a new login window
+        auth_controller = AuthController()
+        login_window = LoginWindow(auth_controller=auth_controller)
+        login_window.show()
+        
+        # Close the dashboard
         self.close()
-        self.login_window = LoginWindow()
-        self.login_window.show()

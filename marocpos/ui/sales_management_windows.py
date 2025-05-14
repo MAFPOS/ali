@@ -51,12 +51,14 @@ class ProductFrame(QFrame):
         layout.addWidget(stock_label)
      ######
 class SalesManagementWindow(QWidget):
-    def __init__(self, username="MAFPOS"):
+    def __init__(self, username="MAFPOS", user_id=1):
         super().__init__()
         self.username = username
+        self.user_id = user_id  # Store user ID for sales recording
         self.current_datetime = datetime.now(pytz.UTC)
-        self.current_amount = 0.0  # Add this line to track the current amount
-        self.selected_product = None  # Add this to track selected product
+        self.current_amount = 0.0  # Track the current amount
+        self.selected_product = None  # Track selected product
+        self.selected_row = None  # Track selected row in cart
         self.init_ui()
         
         # Setup timer for datetime updates
@@ -81,23 +83,36 @@ class SalesManagementWindow(QWidget):
 
     def keypad_pressed(self, text):
         """Handle keypad button presses"""
-        if self.selected_product:
+        # Check if a row is selected
+        if self.selected_row is None or self.selected_product is None:
+            # No row selected, show warning
+            QMessageBox.warning(self, "Attention", "Veuillez sélectionner un produit dans le panier d'abord.")
+            return
+            
+        try:
             current_qty = self.cart_table.item(self.selected_row, 1).text()
             
             if text == 'C':
-                new_qty = ''
+                # Clear and set to 1
+                new_qty = '1'
             elif text == '.' and '.' in current_qty:
+                # Don't allow multiple decimal points
                 return
             else:
+                # Add the text to the current quantity
                 new_qty = current_qty + text
                 
+            # Try to convert to float and update if valid
             try:
-                qty = float(new_qty) if new_qty else 0
+                qty = float(new_qty) if new_qty else 1  # Default to 1 if empty
                 if qty > 0:
                     self.cart_table.setItem(self.selected_row, 1, QTableWidgetItem(str(qty)))
                     self.update_total()
             except ValueError:
+                # Invalid number, keep the current value
                 pass
+        except Exception as e:
+            print(f"Error in keypad_pressed: {e}")
 
     def remove_from_cart(self, row):
         """Remove an item from the cart"""
@@ -152,7 +167,7 @@ class SalesManagementWindow(QWidget):
                 """, (
                     self.current_datetime.strftime("%Y-%m-%d %H:%M:%S"),
                     self.current_amount,
-                    1  # Replace with actual user_id
+                    self.user_id  # Use the user_id from instance
                 ))
                 
                 sale_id = cursor.lastrowid
@@ -203,6 +218,13 @@ class SalesManagementWindow(QWidget):
         self.current_datetime = datetime.now(pytz.UTC)
         formatted_date = self.current_datetime.strftime("%Y-%m-%d %H:%M:%S")
         self.datetime_label.setText(f"Date: {formatted_date}")
+        
+    def on_cart_item_clicked(self, item):
+        """Handle cart item selection"""
+        self.selected_row = item.row()
+        self.selected_product = self.cart_table.item(self.selected_row, 0).text()
+        # Select the entire row
+        self.cart_table.selectRow(self.selected_row)
 ################################################
     def init_ui(self):
         # Main layout
@@ -281,7 +303,13 @@ class SalesManagementWindow(QWidget):
                 font-weight: bold;
                 color: #495057;
             }
+            QTableWidget::item:selected {
+                background-color: #e6f3ff;
+                color: #000;
+            }
         """)
+        # Connect to item selection event
+        self.cart_table.itemClicked.connect(self.on_cart_item_clicked)
         cart_layout.addWidget(self.cart_table)
 
         # Total section
@@ -549,4 +577,4 @@ class SalesManagementWindow(QWidget):
                 color: #dc3545;
             }
         """)
-        delete_btn.clicked.connect(lambda: self.remove_from_cart)
+        delete_btn.clicked.connect(lambda checked, r=row: self.remove_from_cart(r))
